@@ -211,6 +211,21 @@ export const ContestView: React.FC<ContestViewProps> = ({
                       Итоговое место: #{result.rank} из {result.totalCompetitors}
                     </span>
                   </div>
+
+                  {/* Explicit Score Matchup Callout (БЛОК 5.2) */}
+                  {result.competitors.length > 0 && (
+                    <div className="mt-3.5 rounded-lg bg-slate-950/80 border border-slate-800 p-2.5 font-mono text-xs">
+                      {result.rank === 1 && result.passed ? (
+                        <span className="text-emerald-300 font-bold">
+                          ★ Ваш проект: {result.playerScore} баллов. Проект {result.competitors[0]?.bureauName}: {result.competitors[0]?.score} баллов. Вы победили в конкурсе!
+                        </span>
+                      ) : (
+                        <span className="text-rose-300 font-bold">
+                          ✗ Ваш проект: {result.playerScore} баллов. Проект {result.competitors.slice().sort((a,b)=>b.score-a.score)[0]?.bureauName}: {result.competitors.slice().sort((a,b)=>b.score-a.score)[0]?.score} баллов. Вы проиграли конкурс.
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

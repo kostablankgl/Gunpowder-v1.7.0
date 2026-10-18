@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Cartridge, CartridgeClass } from '../types';
+import { CARTRIDGE_LIMITS } from '../engine/physics';
 import { sounds } from '../utils/audio';
 
 interface CustomCaliberModalProps {
@@ -24,6 +25,8 @@ export const CustomCaliberModal: React.FC<CustomCaliberModalProps> = ({
   // User can freely configure test/reference barrel length to calculate ballistics
   const [testBarrelLength, setTestBarrelLength] = useState<number>(415);
 
+  const classLimits = CARTRIDGE_LIMITS[cartridgeClass];
+
   // Derived properties calculation
   const overallLength = Math.round(caseLength + 16 + (bulletDiameter > 7 ? 2 : 0));
   
@@ -31,7 +34,6 @@ export const CustomCaliberModal: React.FC<CustomCaliberModalProps> = ({
   const defaultStandardLRef = cartridgeClass === 'pistol' ? 140 : cartridgeClass === 'intermediate' ? 415 : 620;
 
   // vRef ballistics approximation:
-  // higher pressure and longer case + lighter bullet gives higher muzzle velocity
   const powderFactor = Math.sqrt((caseLength * maxPressure) / (bulletMass * 3000));
   const baseStandardV = Math.round(
     cartridgeClass === 'pistol'
@@ -41,13 +43,41 @@ export const CustomCaliberModal: React.FC<CustomCaliberModalProps> = ({
       : 800 * powderFactor
   );
 
-  // Ballistics scaling with custom test barrel length: v = vBase * (L / Lref)^0.25
-  const muzzleVelocityWithTestBarrel = Math.round(
+  // Ballistics scaling with custom test barrel length
+  const rawVelocity = Math.round(
     baseStandardV * Math.pow(Math.max(100, testBarrelLength) / defaultStandardLRef, 0.25)
   );
+  // Strictly capped velocity and energy
+  const muzzleVelocityWithTestBarrel = Math.min(classLimits.maxVelocity, rawVelocity);
 
-  const muzzleEnergy = Math.round(0.5 * (bulletMass / 1000) * muzzleVelocityWithTestBarrel * muzzleVelocityWithTestBarrel);
+  const rawEnergy = Math.round(0.5 * (bulletMass / 1000) * rawVelocity * rawVelocity);
+  const muzzleEnergy = Math.min(classLimits.maxEnergy, rawEnergy);
   const devCost = 65;
+
+  // Strict physical class validation (БЛОК 1.2)
+  const limitViolations: string[] = [];
+  if (bulletMass > classLimits.maxBulletMass) {
+    limitViolations.push(
+      `Масса пули ${bulletMass} г превышает предел для ${cartridgeClass === 'pistol' ? 'пистолетов' : cartridgeClass === 'intermediate' ? 'промежуточных' : 'винтовок'} (макс. ${classLimits.maxBulletMass} г).`
+    );
+  }
+  if (rawEnergy > classLimits.maxEnergy) {
+    limitViolations.push(
+      `Дульная энергия ${rawEnergy} Дж превышает конструктивный предел класса (${classLimits.maxEnergy} Дж).`
+    );
+  }
+  if (rawVelocity > classLimits.maxVelocity) {
+    limitViolations.push(
+      `Скорость пули ${rawVelocity} м/с превышает порог стабильности ствола (${classLimits.maxVelocity} м/с).`
+    );
+  }
+  if (maxPressure > classLimits.maxPressure) {
+    limitViolations.push(
+      `Пиковое давление ${maxPressure} бар разорвёт патронник (лимит класса: ${classLimits.maxPressure} бар).`
+    );
+  }
+
+  const isBlockedByLimits = limitViolations.length > 0;
 
   const handleCreate = () => {
     sounds.playCraft();
@@ -296,6 +326,36 @@ export const CustomCaliberModal: React.FC<CustomCaliberModalProps> = ({
               </div>
             </div>
           </div>
+          {/* Class Limits & Physical Ceiling Reference */}
+          <div className="rounded-lg bg-slate-950/50 p-3 border border-slate-800 text-[11px] font-mono text-slate-400">
+            <span className="text-slate-300 font-semibold block mb-1">
+              Нормативы класса ({cartridgeClass === 'pistol' ? 'Пистолетный' : cartridgeClass === 'intermediate' ? 'Промежуточный' : 'Винтовочный'}):
+            </span>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-slate-400">
+              <div>Макс. масса пули: <span className="text-cyan-300">{classLimits.maxBulletMass} г</span></div>
+              <div>Макс. скорость: <span className="text-cyan-300">{classLimits.maxVelocity} м/с</span></div>
+              <div>Макс. энергия: <span className="text-cyan-300">{classLimits.maxEnergy} Дж</span></div>
+              <div>Предел давления: <span className="text-cyan-300">{classLimits.maxPressure} бар</span></div>
+            </div>
+          </div>
+
+          {/* Hard Limit Violations Banner (БЛОК 1.2) */}
+          {isBlockedByLimits && (
+            <div className="rounded-xl border border-rose-800/80 bg-rose-950/40 p-3.5 space-y-1.5 text-xs">
+              <div className="flex items-center gap-2 text-rose-300 font-bold">
+                <span>⛔</span>
+                <span>Нарушение баллистических пределов класса:</span>
+              </div>
+              <ul className="list-disc list-inside space-y-0.5 text-rose-200 font-mono text-[11px]">
+                {limitViolations.map((v, i) => (
+                  <li key={i}>{v}</li>
+                ))}
+              </ul>
+              <div className="text-[11px] text-rose-400 pt-1">
+                Государственная приёмочная комиссия блокирует запуск в серию патронов, выходящих за рамки физических допусков класса.
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Modal Footer */}
@@ -313,15 +373,19 @@ export const CustomCaliberModal: React.FC<CustomCaliberModalProps> = ({
             </button>
             <button
               type="button"
-              disabled={currentBudget < devCost}
+              disabled={currentBudget < devCost || isBlockedByLimits}
               onClick={handleCreate}
               className={`rounded-lg px-5 py-2 text-xs font-semibold text-white transition-colors ${
-                currentBudget >= devCost
+                !isBlockedByLimits && currentBudget >= devCost
                   ? 'bg-cyan-600 hover:bg-cyan-500 shadow-lg shadow-cyan-600/30'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
               }`}
             >
-              {currentBudget >= devCost ? 'Утвердить и поставить на вооружение' : 'Недостаточно бюджета'}
+              {isBlockedByLimits
+                ? 'Заблокировано (Превышение лимитов)'
+                : currentBudget >= devCost
+                ? 'Утвердить и поставить на вооружение'
+                : 'Недостаточно бюджета'}
             </button>
           </div>
         </div>

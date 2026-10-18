@@ -432,8 +432,8 @@ export default function App() {
   }, [slots, layout, country, currentTZ]);
 
   const issues = useMemo(() => {
-    return validateWeapon(slots, year, unlockedTechs);
-  }, [slots, year, unlockedTechs]);
+    return validateWeapon(slots, year, unlockedTechs, layout);
+  }, [slots, year, unlockedTechs, layout]);
 
   const hasErrors = issues.some((i) => i.type === 'error');
 
@@ -837,6 +837,10 @@ export default function App() {
               slots={slots}
               tz={currentTZ}
               issues={issues}
+              onSubmitToContest={() => {
+                sounds.playBoltCycle();
+                setIsContestOpen(true);
+              }}
             />
           </div>
         </div>

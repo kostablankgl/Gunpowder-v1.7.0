@@ -185,6 +185,22 @@ export interface DerivedStats {
   triggerQuality: number; // 0 - 100
   optimalTwist: number; // mm
   overallLength: number; // mm
+  recoilCoeff: number; // 0.05 | 0.09 | 0.12 based on class
+  isBullpupPenaltyApplied?: boolean;
+  massBreakdown: {
+    barrel: number;
+    receiver: number;
+    magazine: number;
+    stock: number;
+    action: number;
+    handguard: number;
+    attachments: number;
+    other: number;
+  };
+  costBreakdown: {
+    nodesSum: number;
+    productionMarkup: number;
+  };
 }
 
 export interface ValidationIssue {

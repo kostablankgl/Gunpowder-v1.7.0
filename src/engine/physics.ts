@@ -7,6 +7,7 @@ import {
   CompetitorDesign,
   WeaponLayout,
   CountryId,
+  CartridgeClass,
 } from '../types';
 
 export function calculateBarrelMass(
@@ -81,6 +82,42 @@ export function calculateHandguardMass(handguard: WeaponSlots['handguard']): num
   return masses[handguard.material];
 }
 
+export interface CartridgeClassLimits {
+  maxBulletMass: number; // grams
+  maxVelocity: number; // m/s
+  maxEnergy: number; // Joules
+  maxPressure: number; // bar
+  maxCaseLength: number; // mm
+  recoilCoeff: number; // 0.05 | 0.09 | 0.12
+}
+
+export const CARTRIDGE_LIMITS: Record<CartridgeClass, CartridgeClassLimits> = {
+  pistol: {
+    maxBulletMass: 10.5,
+    maxVelocity: 500,
+    maxEnergy: 750,
+    maxPressure: 2600,
+    maxCaseLength: 30,
+    recoilCoeff: 0.05,
+  },
+  intermediate: {
+    maxBulletMass: 10.5,
+    maxVelocity: 940,
+    maxEnergy: 2100,
+    maxPressure: 3850,
+    maxCaseLength: 46,
+    recoilCoeff: 0.09,
+  },
+  rifle: {
+    maxBulletMass: 14.5,
+    maxVelocity: 960,
+    maxEnergy: 4200,
+    maxPressure: 4400,
+    maxCaseLength: 68,
+    recoilCoeff: 0.12,
+  },
+};
+
 export function calculateDerivedStats(
   slots: WeaponSlots,
   layout: WeaponLayout,
@@ -103,12 +140,16 @@ export function calculateDerivedStats(
     lowerAttachment,
   } = slots;
 
-  // 8.1 Bullet Velocity
-  const lengthRatio = Math.min(1.2, barrel.length / cartridge.lRef);
-  const velocity = Math.round(cartridge.vRef * (0.55 + 0.45 * Math.min(1.0, lengthRatio)));
+  const limits = CARTRIDGE_LIMITS[cartridge.class];
 
-  // 8.2 Muzzle Energy (Joules)
-  const energy = Math.round(0.5 * (cartridge.bulletMass / 1000) * velocity * velocity);
+  // 8.1 Bullet Velocity with class upper limit Math.min()
+  const lengthRatio = Math.min(1.25, barrel.length / cartridge.lRef);
+  const rawVelocity = Math.round(cartridge.vRef * (0.55 + 0.45 * Math.min(1.0, lengthRatio)));
+  const velocity = Math.min(limits.maxVelocity, rawVelocity);
+
+  // 8.2 Muzzle Energy (Joules) capped strictly by class limits
+  const rawEnergy = Math.round(0.5 * (cartridge.bulletMass / 1000) * velocity * velocity);
+  const energy = Math.min(limits.maxEnergy, rawEnergy);
 
   // 8.3 Flatness (0 - 100)
   const flatnessRaw = 50 + (velocity - 400) * 0.08 - (cartridge.bulletMass - 7) * 2.0;
@@ -147,10 +188,11 @@ export function calculateDerivedStats(
     ).toFixed(2)
   );
 
-  // 8.5 Recoil
+  // 8.5 Recoil Formula with Class-Dependent Coeff (pistol: 0.05, intermediate: 0.09, rifle: 0.12)
+  const recoilCoeff = limits.recoilCoeff;
   const muzzleReduction = muzzleDevice.recoilReduction / 100;
   const stockDamperMod = stock.recoilDamper ? 0.85 : 1.0;
-  const recoilEnergy = Math.round(energy * (1 - muzzleReduction) * stockDamperMod * 0.08);
+  const recoilEnergy = Math.round(energy * (1 - muzzleReduction) * stockDamperMod * recoilCoeff);
   const feltRecoil = Number((recoilEnergy / Math.max(1.5, weaponMass)).toFixed(1));
 
   // 8.7 Unit Cost
@@ -199,17 +241,30 @@ export function calculateDerivedStats(
   if (magazine.type === 'drum') rel -= 6;
   if (magazine.type === 'tube') rel -= 3;
   if (barrel.length < 250 && action.type === 'gas') rel -= 8;
-  if (receiver.strength < cartridge.maxPressure) rel -= 80;
+  
+  // Severe failure penalty if receiver cannot hold pressure
+  const isOverpressured = receiver.strength < cartridge.maxPressure;
+  if (isOverpressured) {
+    rel -= 80;
+  }
+
   if (!action.gasAdjustable && action.type === 'gas') rel -= 4;
   if (action.type === 'manual') rel += 6;
   rel -= climatePenalty;
-  const reliability = Math.min(100, Math.max(5, Math.round(rel)));
+  const reliability = isOverpressured ? 5 : Math.min(100, Math.max(5, Math.round(rel)));
 
-  // 8.10 Trigger Quality
-  const kPull = layout === 'bullpup' ? 0.35 : 0.15;
+  // 8.10 Trigger Quality: Heavy Penalty for Bullpup (long flex link rod)
+  const isBullpupPenaltyApplied = layout === 'bullpup';
+  const bullpupTriggerPenalty = isBullpupPenaltyApplied ? 22 : 0;
+  const kPull = isBullpupPenaltyApplied ? 0.35 : 0.15;
   const triggerQuality = Math.min(
     100,
-    Math.max(10, Math.round(100 - trigger.pullLength * kPull - (trigger.type === 'twoStage' ? 4 : 0)))
+    Math.max(
+      10,
+      Math.round(
+        100 - trigger.pullLength * kPull - (trigger.type === 'twoStage' ? 2 : 8) - bullpupTriggerPenalty
+      )
+    )
   );
 
   // 8.11 Accuracy (MOA)
@@ -305,16 +360,33 @@ export function calculateDerivedStats(
     triggerQuality,
     optimalTwist,
     overallLength,
+    recoilCoeff,
+    isBullpupPenaltyApplied,
+    massBreakdown: {
+      barrel: barrelMass,
+      receiver: receiverMass,
+      magazine: magMass,
+      stock: stockMass,
+      action: actionMass,
+      handguard: hgMass,
+      attachments: Number((topInterface.mass + muzzleDevice.mass + topOpticMass + lowerOpticMass).toFixed(2)),
+      other: 0.15,
+    },
+    costBreakdown: {
+      nodesSum: Number(sumNodesCost.toFixed(1)),
+      productionMarkup: Number(productionMarkup.toFixed(1)),
+    },
   };
 }
 
 export function validateWeapon(
   slots: WeaponSlots,
   currentYear: number,
-  unlockedTechs: string[]
+  unlockedTechs: string[],
+  layout?: WeaponLayout
 ): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  const { cartridge, barrel, action, receiver, topInterface, handguard, muzzleDevice, topAttachment, lowerAttachment } = slots;
+  const { cartridge, barrel, action, receiver, trigger, topInterface, handguard, muzzleDevice, topAttachment, lowerAttachment } = slots;
 
   // 9.1 Blowback + Intermediate/Rifle
   if (action.type === 'blowback' && (cartridge.class === 'intermediate' || cartridge.class === 'rifle')) {
@@ -322,7 +394,7 @@ export function validateWeapon(
       type: 'error',
       code: 'BLOWBACK_HEAVY_CARTRIDGE',
       title: 'Свободный затвор недопустим под данный патрон',
-      description: 'Свободный затвор не запирает патронник: масса затвора превысила бы 2.5 кг, а стреляную гильзу разорвёт при выстреле.',
+      description: 'Масса затвора будет слишком большой (более 2.5–3 кг) для безопасного запирания: гильзу разорвёт при выстреле. Требуется жёсткое запирание (газоотвод) или полусвободный затвор.',
       affectedSlot: 'action',
     });
   }
@@ -338,14 +410,25 @@ export function validateWeapon(
     });
   }
 
-  // 9.3 Receiver strength < Max pressure
+  // 9.3 Receiver strength < Max pressure (Hard failure)
   if (receiver.strength < cartridge.maxPressure) {
     issues.push({
       type: 'error',
       code: 'RECEIVER_UNDERPRESSURE',
-      title: 'Ствольная коробка не выдержит давления пороховых газов',
-      description: `Прочность ресивера (${receiver.strength} бар) ниже пикового давления патрона (${cartridge.maxPressure} бар). Разрыв патронника при первом выстреле!`,
+      title: 'Ресивер не выдержит давление',
+      description: `Ресивер не выдержит давление: прочность ствольной коробки (${receiver.strength} бар) ниже пикового давления патрона (${cartridge.maxPressure} бар). Разрыв патронника при первом выстреле!`,
       affectedSlot: 'receiver',
+    });
+  }
+
+  // 9.3b Bullpup trigger warning if direct trigger
+  if (layout === 'bullpup' && trigger.type === 'direct') {
+    issues.push({
+      type: 'warning',
+      code: 'BULLPUP_TRIGGER_SLUGGISH',
+      title: 'Длинная спусковая тяга ухудшает спуск',
+      description: 'В компоновке Bullpup спусковая тяга через весь корпус даёт вязкий спуск (-22 к качеству УСМ). Рекомендуется двухступенчатый УСМ (Two-Stage) для компенсации.',
+      affectedSlot: 'trigger',
     });
   }
 
@@ -719,6 +802,21 @@ export function generateCompetitors(
       triggerQuality: 70,
       optimalTwist: 240,
       overallLength: 850,
+      recoilCoeff: 0.09,
+      massBreakdown: {
+        barrel: Number((mass * 0.35).toFixed(2)),
+        receiver: Number((mass * 0.30).toFixed(2)),
+        magazine: Number((mass * 0.15).toFixed(2)),
+        stock: Number((mass * 0.12).toFixed(2)),
+        action: 0.35,
+        handguard: 0.25,
+        attachments: 0.0,
+        other: 0.15,
+      },
+      costBreakdown: {
+        nodesSum: Number((cost * 0.85).toFixed(1)),
+        productionMarkup: Number((cost * 0.15).toFixed(1)),
+      },
     };
 
     // Threshold check
