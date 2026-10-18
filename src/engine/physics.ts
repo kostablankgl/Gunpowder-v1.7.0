@@ -1,0 +1,1034 @@
+import {
+  WeaponSlots,
+  DerivedStats,
+  ValidationIssue,
+  TechnicalSpecification,
+  ContestResult,
+  CompetitorDesign,
+  WeaponLayout,
+  CountryId,
+} from '../types';
+
+export function calculateBarrelMass(
+  lengthMm: number,
+  profile: 'light' | 'medium' | 'heavy',
+  material: 'steel' | 'stainless' | 'composite',
+  bulletDiameter: number
+): number {
+  const profileCoeffs = { light: 0.85, medium: 1.2, heavy: 1.65 };
+  const matCoeffs = { steel: 1.0, stainless: 1.05, composite: 0.68 };
+  
+  const base = profileCoeffs[profile] * (lengthMm / 500) * (0.8 + 0.04 * (bulletDiameter - 7.62));
+  return Number((base * matCoeffs[material]).toFixed(2));
+}
+
+export function calculateBarrelCost(
+  lengthMm: number,
+  profile: 'light' | 'medium' | 'heavy',
+  material: 'steel' | 'stainless' | 'composite'
+): number {
+  const kMat = { steel: 1.0, stainless: 1.45, composite: 2.2 };
+  const heavyExtra = profile === 'heavy' ? 1.35 : profile === 'medium' ? 1.1 : 1.0;
+  return Number(((kMat[material] * (lengthMm / 100) * 1.2) * heavyExtra).toFixed(1));
+}
+
+export function calculateReceiverMass(receiver: WeaponSlots['receiver']): number {
+  const methodMult = {
+    milled: 1.3,
+    stamped: 0.8,
+    cast: 1.1,
+    polymerMolded: 0.5,
+  };
+  return Number((receiver.mass * methodMult[receiver.method]).toFixed(2));
+}
+
+export function calculateReceiverCost(
+  receiver: WeaponSlots['receiver'],
+  country: CountryId = 'USSR'
+): number {
+  let cost = receiver.cost;
+  if (country === 'USSR') {
+    if (receiver.method === 'stamped') cost *= 0.8;
+    if (receiver.method === 'milled') cost *= 1.1;
+  }
+  return Number(cost.toFixed(1));
+}
+
+export function calculateMagazineMass(magazine: WeaponSlots['magazine'], cartridge: WeaponSlots['cartridge']): number {
+  const roundMass = (cartridge.bulletMass + 12) / 1000; // bullet + case + powder
+  const bodyBase = magazine.material === 'polymer' ? 0.12 : 0.22;
+  const ammoTotal = magazine.capacity * (roundMass + (magazine.material === 'polymer' ? 0.010 : 0.015));
+  return Number((bodyBase + ammoTotal).toFixed(2));
+}
+
+export function calculateStockMass(stock: WeaponSlots['stock']): number {
+  const masses = {
+    fixedWood: 0.65,
+    folding: 0.38,
+    telescopic: 0.46,
+    polymer: 0.42,
+  };
+  const extra = stock.recoilDamper ? 0.08 : 0;
+  return Number((masses[stock.type] + extra).toFixed(2));
+}
+
+export function calculateHandguardMass(handguard: WeaponSlots['handguard']): number {
+  const masses = {
+    wood: 0.28,
+    aluminum: 0.34,
+    polymer: 0.22,
+  };
+  return masses[handguard.material];
+}
+
+export function calculateDerivedStats(
+  slots: WeaponSlots,
+  layout: WeaponLayout,
+  country: CountryId = 'USSR',
+  batchSize: number = 20000,
+  climate: 'normal' | 'dust' | 'frost' | 'mud' = 'normal'
+): DerivedStats {
+  const {
+    cartridge,
+    barrel,
+    action,
+    receiver,
+    magazine,
+    trigger,
+    stock,
+    topInterface,
+    handguard,
+    muzzleDevice,
+    topAttachment,
+    lowerAttachment,
+  } = slots;
+
+  // 8.1 Bullet Velocity
+  const lengthRatio = Math.min(1.2, barrel.length / cartridge.lRef);
+  const velocity = Math.round(cartridge.vRef * (0.55 + 0.45 * Math.min(1.0, lengthRatio)));
+
+  // 8.2 Muzzle Energy (Joules)
+  const energy = Math.round(0.5 * (cartridge.bulletMass / 1000) * velocity * velocity);
+
+  // 8.3 Flatness (0 - 100)
+  const flatnessRaw = 50 + (velocity - 400) * 0.08 - (cartridge.bulletMass - 7) * 2.0;
+  const flatness = Math.min(100, Math.max(0, Math.round(flatnessRaw)));
+
+  // 8.4 Optimal Twist & Twist Penalty (MOA) - Calibrated to realistic rifling
+  const optimalTwist = Math.round(
+    (30 * (cartridge.bulletDiameter * cartridge.bulletDiameter)) / cartridge.bulletMass
+  );
+  const twistDiff = Math.abs(barrel.twist - optimalTwist);
+  const twistPenalty = (twistDiff / Math.max(50, optimalTwist)) * 14.0;
+
+  // Masses
+  const barrelMass = calculateBarrelMass(barrel.length, barrel.profile, barrel.material, cartridge.bulletDiameter);
+  const receiverMass = calculateReceiverMass(receiver);
+  const magMass = calculateMagazineMass(magazine, cartridge);
+  const stockMass = calculateStockMass(stock);
+  const hgMass = calculateHandguardMass(handguard);
+  const topOpticMass = topAttachment ? topAttachment.mass : 0;
+  const lowerOpticMass = lowerAttachment ? lowerAttachment.mass : 0;
+  const actionMass = action.boltMass + (action.requiresGasTube ? 0.25 : 0.05);
+
+  const weaponMass = Number(
+    (
+      barrelMass +
+      receiverMass +
+      magMass +
+      stockMass +
+      hgMass +
+      topInterface.mass +
+      muzzleDevice.mass +
+      topOpticMass +
+      lowerOpticMass +
+      actionMass +
+      0.15 // trigger and pins
+    ).toFixed(2)
+  );
+
+  // 8.5 Recoil
+  const muzzleReduction = muzzleDevice.recoilReduction / 100;
+  const stockDamperMod = stock.recoilDamper ? 0.85 : 1.0;
+  const recoilEnergy = Math.round(energy * (1 - muzzleReduction) * stockDamperMod * 0.08);
+  const feltRecoil = Number((recoilEnergy / Math.max(1.5, weaponMass)).toFixed(1));
+
+  // 8.7 Unit Cost
+  const barrelCost = calculateBarrelCost(barrel.length, barrel.profile, barrel.material);
+  const receiverCost = calculateReceiverCost(receiver, country);
+  const magCost = magazine.capacity > 30 ? 4.5 : 2.5;
+  const stockCost = stock.recoilDamper ? 6.0 : 3.5;
+  const hgCost = handguard.lowerInterface !== 'none' ? 6.5 : 2.5;
+  const topAttCost = topAttachment ? topAttachment.cost : 0;
+  const lowerAttCost = lowerAttachment ? lowerAttachment.cost : 0;
+
+  const sumNodesCost =
+    cartridge.cost +
+    barrelCost +
+    receiverCost +
+    action.cost +
+    magCost +
+    trigger.cost +
+    stockCost +
+    topInterface.cost +
+    hgCost +
+    muzzleDevice.cost +
+    topAttCost +
+    lowerAttCost;
+
+  const methodFactors = { milled: 6, stamped: 1, cast: 2, polymerMolded: 1.5 };
+  const methodFactor = methodFactors[receiver.method];
+  const productionMarkup = sumNodesCost * (methodFactor - 1) * (1 / Math.max(1000, batchSize)) * 100;
+  const unitCost = Number((sumNodesCost + productionMarkup).toFixed(1));
+
+  // 8.8 Reliability
+  let climatePenalty = 0;
+  if (climate === 'dust') climatePenalty = 14;
+  else if (climate === 'mud') climatePenalty = 16;
+  else if (climate === 'frost') climatePenalty = 10;
+
+  // Gas regulation or manual action mitigates climate
+  if (action.gasAdjustable) {
+    climatePenalty = Math.max(0, climatePenalty - 8);
+  }
+  if (action.type === 'manual') {
+    climatePenalty = Math.max(0, climatePenalty - 10);
+  }
+
+  let rel = action.reliabilityBase;
+  if (magazine.type === 'drum') rel -= 6;
+  if (magazine.type === 'tube') rel -= 3;
+  if (barrel.length < 250 && action.type === 'gas') rel -= 8;
+  if (receiver.strength < cartridge.maxPressure) rel -= 80;
+  if (!action.gasAdjustable && action.type === 'gas') rel -= 4;
+  if (action.type === 'manual') rel += 6;
+  rel -= climatePenalty;
+  const reliability = Math.min(100, Math.max(5, Math.round(rel)));
+
+  // 8.10 Trigger Quality
+  const kPull = layout === 'bullpup' ? 0.35 : 0.15;
+  const triggerQuality = Math.min(
+    100,
+    Math.max(10, Math.round(100 - trigger.pullLength * kPull - (trigger.type === 'twoStage' ? 4 : 0)))
+  );
+
+  // 8.11 Accuracy (MOA)
+  const baseMOAByAction = {
+    manual: 1.4,
+    gas: 2.8,
+    delayedBlowback: 3.2,
+    recoil: 3.8,
+    blowback: 4.8,
+  };
+  let accuracy = baseMOAByAction[action.type] + twistPenalty;
+  accuracy += (100 - triggerQuality) * 0.025;
+
+  if (barrel.profile === 'light') accuracy += 1.8;
+  if (barrel.profile === 'medium') accuracy += 0.4;
+  if (barrel.length < 300) accuracy += 1.2;
+
+  // Attachments bonuses and penalties
+  if (topAttachment) {
+    accuracy += topAttachment.accuracyBonus;
+    // Check recoil rating penalty
+    if (topInterface.recoilCapacity < topAttachment.requiredRecoilCapacity) {
+      accuracy += 3.5; // Loses zero!
+    }
+  }
+  if (lowerAttachment) {
+    accuracy += lowerAttachment.accuracyBonus;
+  }
+
+  // Dovetail with rifle cartridge loses zero
+  if (
+    (topInterface.type === 'dovetail11' || topInterface.type === 'dovetail38') &&
+    cartridge.class === 'rifle' &&
+    topAttachment
+  ) {
+    accuracy += 3.0;
+  }
+
+  const accuracyMOA = Number(Math.max(0.6, accuracy).toFixed(2));
+
+  // 8.12 Ergonomics
+  let ergo = 68;
+  if (stock.type === 'fixedWood' || stock.type === 'telescopic') ergo += 8;
+  if (stock.type === 'folding') ergo += 4;
+  if (weaponMass > 3.8) ergo -= (weaponMass - 3.8) * 8.0;
+  if (topInterface.height > 10) ergo -= (topInterface.height - 10) * 1.2;
+  if (layout === 'bullpup') ergo -= 4; // rear balance
+  if (triggerQuality > 75) ergo += 4;
+
+  if (topAttachment) ergo += topAttachment.ergonomicsBonus;
+  if (lowerAttachment) ergo += lowerAttachment.ergonomicsBonus;
+
+  const ergonomics = Math.min(100, Math.max(15, Math.round(ergo)));
+
+  // 8.13 Standardization
+  let stand = topInterface.standardization;
+  if (handguard.lowerInterface === 'picatinny') stand = Math.min(100, stand + 15);
+  else if (handguard.lowerInterface === 'mlok') stand = Math.min(100, stand + 10);
+  const standardization = Math.round(stand);
+
+  // 8.14 Manufacturability
+  let manuf = 100;
+  if (receiver.method === 'milled') manuf -= 35;
+  if (receiver.method === 'cast') manuf -= 15;
+  if (receiver.method === 'stamped') manuf += 12;
+  if (receiver.material === 'polymer') manuf += 8;
+  const manufacturability = Math.min(100, Math.max(20, Math.round(manuf)));
+
+  // Cyclic rate
+  const cyclicRate = action.type === 'manual' ? 25 : action.cyclicRate;
+
+  // Overall Length
+  const stockLen = stock.length;
+  const barrelLen = barrel.length;
+  const overallLength = layout === 'bullpup' 
+    ? Math.round(barrelLen + 180 + (muzzleDevice.type !== 'none' ? 40 : 0))
+    : Math.round(barrelLen + stockLen + 150 + (muzzleDevice.type !== 'none' ? 50 : 0));
+
+  return {
+    velocity,
+    energy,
+    flatness,
+    weaponMass,
+    unitCost,
+    reliability,
+    accuracyMOA,
+    ergonomics,
+    standardization,
+    manufacturability,
+    cyclicRate,
+    feltRecoil,
+    recoilEnergy,
+    triggerQuality,
+    optimalTwist,
+    overallLength,
+  };
+}
+
+export function validateWeapon(
+  slots: WeaponSlots,
+  currentYear: number,
+  unlockedTechs: string[]
+): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const { cartridge, barrel, action, receiver, topInterface, handguard, muzzleDevice, topAttachment, lowerAttachment } = slots;
+
+  // 9.1 Blowback + Intermediate/Rifle
+  if (action.type === 'blowback' && (cartridge.class === 'intermediate' || cartridge.class === 'rifle')) {
+    issues.push({
+      type: 'error',
+      code: 'BLOWBACK_HEAVY_CARTRIDGE',
+      title: 'Свободный затвор недопустим под данный патрон',
+      description: 'Свободный затвор не запирает патронник: масса затвора превысила бы 2.5 кг, а стреляную гильзу разорвёт при выстреле.',
+      affectedSlot: 'action',
+    });
+  }
+
+  // 9.2 Cartridge longer than receiver length
+  if (cartridge.overallLength > receiver.length) {
+    issues.push({
+      type: 'error',
+      code: 'CARTRIDGE_EXCEEDS_RECEIVER',
+      title: 'Патрон не помещается в патронник и ствольную коробку',
+      description: `Длина патрона (${cartridge.overallLength} мм) превышает габарит приёмника (${receiver.length} мм).`,
+      affectedSlot: 'cartridge',
+    });
+  }
+
+  // 9.3 Receiver strength < Max pressure
+  if (receiver.strength < cartridge.maxPressure) {
+    issues.push({
+      type: 'error',
+      code: 'RECEIVER_UNDERPRESSURE',
+      title: 'Ствольная коробка не выдержит давления пороховых газов',
+      description: `Прочность ресивера (${receiver.strength} бар) ниже пикового давления патрона (${cartridge.maxPressure} бар). Разрыв патронника при первом выстреле!`,
+      affectedSlot: 'receiver',
+    });
+  }
+
+  // 9.4 Polymer receiver + rifle cartridge
+  if (receiver.material === 'polymer' && cartridge.class === 'rifle') {
+    issues.push({
+      type: 'error',
+      code: 'POLYMER_RIFLE_FORBIDDEN',
+      title: 'Полимер не держит импульс винтовочного патрона',
+      description: 'Мощный винтовочный патрон вызовет пластическую деформацию полимерной ствольной коробки и срыв направляющих затвора.',
+      affectedSlot: 'receiver',
+    });
+  }
+
+  // 9.5 Picatinny tech availability
+  if (topInterface.type === 'picatinny' && currentYear < 1985 && !unlockedTechs.includes('picatinny_standard')) {
+    issues.push({
+      type: 'error',
+      code: 'PICATINNY_ANACHRONISM',
+      title: 'Планка Пикатинни еще не стандартизирована',
+      description: `Стандарт MIL-STD-1913 появится только в 1985–1995 гг. Сейчас доступен ласточкин хвост или Weaver.`,
+      affectedSlot: 'topInterface',
+    });
+  }
+
+  // 9.6 Suppressor requires threaded barrel
+  if (muzzleDevice.type === 'suppressor' && barrel.thread === 'none') {
+    issues.push({
+      type: 'error',
+      code: 'SUPPRESSOR_NO_THREAD',
+      title: 'Глушитель не на что закрепить',
+      description: 'Для установки тактического глушителя требуется нарезка резьбы на стволе (выберите M14 или M18 в настройках ствола).',
+      affectedSlot: 'muzzleDevice',
+    });
+  }
+
+  // 9.7 Attachment requires higher recoil capacity than rail
+  if (topAttachment && topInterface.type !== 'none') {
+    if (topInterface.recoilCapacity < topAttachment.requiredRecoilCapacity) {
+      issues.push({
+        type: 'warning',
+        code: 'ATTACHMENT_RECOIL_OVERLOAD',
+        title: 'Прицел сбивает среднюю точку попадания (СТП)',
+        description: `Прицел ${topAttachment.name} требует планку со стойкостью ${topAttachment.requiredRecoilCapacity} Дж, а ${topInterface.type} держит только ${topInterface.recoilCapacity} Дж. Штраф к кучности +3.5 MOA!`,
+        affectedSlot: 'topAttachment',
+      });
+    }
+  }
+
+  // 9.8 Dovetail + rifle cartridge optics
+  if (
+    (topInterface.type === 'dovetail11' || topInterface.type === 'dovetail38') &&
+    cartridge.class === 'rifle' &&
+    topAttachment
+  ) {
+    issues.push({
+      type: 'warning',
+      code: 'DOVETAIL_RIFLE_DRIFT',
+      title: 'Ненадёжная посадка на ласточкином хвосте',
+      description: 'Энергия отдачи винтовочного патрона сдвигает оптический прицел по пазам ласточкиного хвоста. Требуется планка Weaver или штифтовый упор.',
+      affectedSlot: 'topInterface',
+    });
+  }
+
+  // 9.9 Stamping before 1940
+  if (receiver.method === 'stamped' && currentYear < 1940 && !unlockedTechs.includes('stamped_metal')) {
+    issues.push({
+      type: 'error',
+      code: 'STAMPING_BEFORE_TECH',
+      title: 'Технология холодной штамповки еще не освоена',
+      description: 'На заводах отсутствуют мощные вытяжные прессы нужного тоннажа. Изучите технологию в КБ или используйте фрезеровку.',
+      affectedSlot: 'receiver',
+    });
+  }
+
+  // 9.10 Polymers before 1965
+  if ((receiver.material === 'polymer' || slots.magazine.material === 'polymer') && currentYear < 1965 && !unlockedTechs.includes('polymers_gen1')) {
+    issues.push({
+      type: 'error',
+      code: 'POLYMERS_BEFORE_TECH',
+      title: 'Оружейные полимеры не изобретены',
+      description: 'Стеклонаполненные термостойкие полиамиды появятся только во 2-й половине 1960-х годов.',
+      affectedSlot: 'receiver',
+    });
+  }
+
+  // Lower attachment check
+  if (lowerAttachment && handguard.lowerInterface === 'none') {
+    issues.push({
+      type: 'error',
+      code: 'LOWER_ATTACHMENT_NO_RAIL',
+      title: 'Нет нижнего интерфейса для подствольного оборудования',
+      description: `Установленный аксессуар (${lowerAttachment.name}) требует цевьё с планкой Picatinny или пазами M-LOK.`,
+      affectedSlot: 'lowerAttachment',
+    });
+  }
+
+  return issues;
+}
+
+export function checkTZCompliance(
+  stats: DerivedStats,
+  tz: TechnicalSpecification,
+  slots: WeaponSlots
+): {
+  passed: boolean;
+  isAcceptableWithNotes: boolean;
+  criticalPassed: boolean;
+  failedItems: { name: string; current: string; required: string; note: string; isCritical: boolean }[];
+  passedItems: { name: string; current: string; required: string }[];
+  recommendations: string[];
+} {
+  const failedItems: { name: string; current: string; required: string; note: string; isCritical: boolean }[] = [];
+  const passedItems: { name: string; current: string; required: string }[] = [];
+  const recommendations: string[] = [];
+
+  let criticalPassed = true;
+
+  // 1. Cartridge class check (CRITICAL)
+  if (slots.cartridge.class !== tz.requiredClass) {
+    criticalPassed = false;
+    failedItems.push({
+      name: 'Класс патрона',
+      current: slots.cartridge.class,
+      required: tz.requiredClass,
+      note: `ТЗ строго требует ${tz.requiredClass} патрон.`,
+      isCritical: true,
+    });
+    recommendations.push(`Смените патрон на калибр класса "${tz.requiredClass}".`);
+  } else {
+    passedItems.push({
+      name: 'Класс патрона',
+      current: slots.cartridge.name,
+      required: tz.requiredClass,
+    });
+  }
+
+  // 2. Minimum firing rate / action capability (CRITICAL if auto required)
+  if (tz.minRate > 100 && stats.cyclicRate < tz.minRate) {
+    criticalPassed = false;
+    failedItems.push({
+      name: 'Темп стрельбы',
+      current: `${stats.cyclicRate} выстр/мин`,
+      required: `≥ ${tz.minRate} выстр/мин`,
+      note: 'В ТЗ требуется автоматическое оружие, а установлена ручная перезарядка.',
+      isCritical: true,
+    });
+    recommendations.push('Установите автоматический газовый двигатель или свободный затвор.');
+  } else if (tz.minRate > 0 && stats.cyclicRate < tz.minRate) {
+    failedItems.push({
+      name: 'Темп стрельбы',
+      current: `${stats.cyclicRate} в/м`,
+      required: `≥ ${tz.minRate} в/м`,
+      note: 'Темп стрельбы незначительно ниже норматива.',
+      isCritical: false,
+    });
+  } else {
+    passedItems.push({
+      name: 'Темп стрельбы',
+      current: `${stats.cyclicRate} в/м`,
+      required: `≥ ${tz.minRate} в/м`,
+    });
+  }
+
+  // 3. Reliability (Soft tolerance within 5% with note)
+  if (stats.reliability < tz.minReliability) {
+    const relDeficit = tz.minReliability - stats.reliability;
+    const isCritical = relDeficit > 8;
+    if (isCritical) criticalPassed = false;
+
+    failedItems.push({
+      name: 'Надёжность',
+      current: `${stats.reliability}%`,
+      required: `≥ ${tz.minReliability}%`,
+      note: `Недостаточная надёжность в климате "${tz.climate}" (дефицит ${relDeficit}%).`,
+      isCritical,
+    });
+    recommendations.push(
+      'Для повышения надёжности: добавьте регулируемый газоотвод (+5%), смените дисковый магазин на секторный (+8%) или проверьте прочность ствольной коробки.'
+    );
+  } else {
+    passedItems.push({
+      name: 'Надёжность',
+      current: `${stats.reliability}%`,
+      required: `≥ ${tz.minReliability}%`,
+    });
+  }
+
+  // 4. Mass (Soft tolerance within 10% with minor remark)
+  if (stats.weaponMass > tz.maxMass) {
+    const massDiff = stats.weaponMass - tz.maxMass;
+    const isCritical = massDiff > tz.maxMass * 0.12; // Over 12% is a hard fail
+    if (isCritical) criticalPassed = false;
+
+    failedItems.push({
+      name: 'Масса оружия',
+      current: `${stats.weaponMass} кг`,
+      required: `≤ ${tz.maxMass} кг`,
+      note: isCritical
+        ? `Критический перевес на +${massDiff.toFixed(2)} кг.`
+        : `Небольшой перевес на +${massDiff.toFixed(2)} кг (допустимо с замечанием комиссии).`,
+      isCritical,
+    });
+    recommendations.push(
+      `Для снижения массы на ${(massDiff * 1000).toFixed(0)} г: выберите ствол профиля Light/Medium (-250..400 г), рамочный/полимерный приклад (-150 г) или штампованную коробку.`
+    );
+  } else {
+    passedItems.push({
+      name: 'Масса оружия',
+      current: `${stats.weaponMass} кг`,
+      required: `≤ ${tz.maxMass} кг`,
+    });
+  }
+
+  // 5. Unit Cost (Soft tolerance within 12% with remark)
+  if (stats.unitCost > tz.maxUnitCost) {
+    const costDiff = stats.unitCost - tz.maxUnitCost;
+    const isCritical = costDiff > tz.maxUnitCost * 0.15;
+    if (isCritical) criticalPassed = false;
+
+    failedItems.push({
+      name: 'Себестоимость серии',
+      current: `${stats.unitCost} у.е.`,
+      required: `≤ ${tz.maxUnitCost} у.е.`,
+      note: isCritical
+        ? `Смета превышена на +${costDiff.toFixed(1)} у.е.`
+        : `Превышение сметы на +${costDiff.toFixed(1)} у.е. (компенсируется высокой серией).`,
+      isCritical,
+    });
+    recommendations.push(
+      'Для удешевления: используйте штамповку вместо фрезеровки, деревянное или простое цевьё, либо снимите дорогостоящую оптику.'
+    );
+  } else {
+    passedItems.push({
+      name: 'Себестоимость',
+      current: `${stats.unitCost} у.е.`,
+      required: `≤ ${tz.maxUnitCost} у.е.`,
+    });
+  }
+
+  // 6. Accuracy MOA (Soft tolerance within 15%)
+  if (stats.accuracyMOA > tz.minAccuracyMOA) {
+    const moaDiff = stats.accuracyMOA - tz.minAccuracyMOA;
+    const isCritical = moaDiff > tz.minAccuracyMOA * 0.25;
+    if (isCritical) criticalPassed = false;
+
+    failedItems.push({
+      name: 'Кучность (MOA)',
+      current: `${stats.accuracyMOA} MOA`,
+      required: `≤ ${tz.minAccuracyMOA} MOA`,
+      note: isCritical
+        ? `Рассеивание выстрелов превышает лимит на +${moaDiff.toFixed(1)} MOA.`
+        : `Кучность чуть ниже требований (+${moaDiff.toFixed(1)} MOA).`,
+      isCritical,
+    });
+    recommendations.push(
+      `Скорректируйте шаг нарезов ствола ближе к оптимуму (${stats.optimalTwist} мм), используйте двухступенчатый спуск или оптику.`
+    );
+  } else {
+    passedItems.push({
+      name: 'Кучность (MOA)',
+      current: `${stats.accuracyMOA} MOA`,
+      required: `≤ ${tz.minAccuracyMOA} MOA`,
+    });
+  }
+
+  // 7. Standardization
+  if (stats.standardization < tz.minStandardization) {
+    const standDiff = tz.minStandardization - stats.standardization;
+    failedItems.push({
+      name: 'Стандартизация',
+      current: `${stats.standardization}%`,
+      required: `≥ ${tz.minStandardization}%`,
+      note: `Недостаточный уровень стандартизации планок (-${standDiff}%).`,
+      isCritical: false,
+    });
+    recommendations.push('Установите стандартные планки Weaver или Picatinny.');
+  } else {
+    passedItems.push({
+      name: 'Стандартизация',
+      current: `${stats.standardization}%`,
+      required: `≥ ${tz.minStandardization}%`,
+    });
+  }
+
+  const passed = failedItems.length === 0;
+  const isAcceptableWithNotes = criticalPassed && !failedItems.some((i) => i.isCritical);
+
+  return { passed, isAcceptableWithNotes, criticalPassed, failedItems, passedItems, recommendations };
+}
+
+export function generateCompetitors(
+  tz: TechnicalSpecification,
+  country: CountryId
+): CompetitorDesign[] {
+  const competitorDefs =
+    country === 'USSR'
+      ? [
+          {
+            bureauName: 'КБ Завода им. Дегтярёва (КБД)',
+            style: 'cheap_mass' as const,
+            weaponSuffix: 'Дегтярёв Проект-У',
+          },
+          {
+            bureauName: 'Тульское ЦКИБ СОО',
+            style: 'precision_cost' as const,
+            weaponSuffix: 'ТКБ Экспериментальный',
+          },
+          {
+            bureauName: 'Ижевский машиностроительный (Ижмаш)',
+            style: 'conservative' as const,
+            weaponSuffix: 'ИЖ-Модель А',
+          },
+        ]
+      : [
+          {
+            bureauName: 'Colt Manufacturing',
+            style: 'conservative' as const,
+            weaponSuffix: 'Colt Model Prototype',
+          },
+          {
+            bureauName: 'ArmaLite Inc.',
+            style: 'innovative' as const,
+            weaponSuffix: 'AR-System Project',
+          },
+          {
+            bureauName: 'Springfield Armory',
+            style: 'cheap_mass' as const,
+            weaponSuffix: 'SA Mil-Pattern',
+          },
+        ];
+
+  return competitorDefs.map((def) => {
+    // Generate realistic stats based on style
+    let rel = tz.minReliability + (Math.random() * 8 - 2);
+    let mass = tz.maxMass - Math.random() * 0.4;
+    let cost = tz.maxUnitCost * (0.8 + Math.random() * 0.25);
+    let moa = tz.minAccuracyMOA * (0.75 + Math.random() * 0.35);
+    let rate = tz.minRate + Math.round(Math.random() * 100);
+    let stand = tz.minStandardization + Math.round(Math.random() * 20);
+
+    if (def.style === 'cheap_mass') {
+      cost *= 0.78;
+      rel -= 3;
+      moa += 0.8;
+      mass -= 0.2;
+    } else if (def.style === 'precision_cost') {
+      moa = Math.max(0.8, moa * 0.65);
+      cost *= 1.35;
+      rel += 2;
+    } else if (def.style === 'innovative') {
+      mass *= 0.88;
+      stand += 15;
+      rel -= 4; // experimental teething trouble
+    }
+
+    const derived: DerivedStats = {
+      velocity: 700 + Math.round(Math.random() * 150),
+      energy: 1800 + Math.round(Math.random() * 1200),
+      flatness: 60 + Math.round(Math.random() * 25),
+      weaponMass: Number(mass.toFixed(2)),
+      unitCost: Number(cost.toFixed(1)),
+      reliability: Math.min(100, Math.round(rel)),
+      accuracyMOA: Number(moa.toFixed(2)),
+      ergonomics: 60 + Math.round(Math.random() * 25),
+      standardization: Math.min(100, Math.round(stand)),
+      manufacturability: 70 + Math.round(Math.random() * 20),
+      cyclicRate: rate,
+      feltRecoil: 6.5,
+      recoilEnergy: 24,
+      triggerQuality: 70,
+      optimalTwist: 240,
+      overallLength: 850,
+    };
+
+    // Threshold check
+    const passed =
+      derived.reliability >= tz.minReliability &&
+      derived.weaponMass <= tz.maxMass &&
+      derived.unitCost <= tz.maxUnitCost &&
+      derived.accuracyMOA <= tz.minAccuracyMOA;
+
+    return {
+      bureauName: def.bureauName,
+      style: def.style,
+      weaponName: `${def.weaponSuffix}`,
+      slots: {},
+      derived,
+      score: 0,
+      passedThresholds: passed,
+      breakdown: {},
+    };
+  });
+}
+
+export function evaluateContest(
+  playerStats: DerivedStats,
+  slots: WeaponSlots,
+  tz: TechnicalSpecification,
+  country: CountryId,
+  precomputedCompetitors?: CompetitorDesign[]
+): ContestResult {
+  const compliance = checkTZCompliance(playerStats, tz, slots);
+  const competitors = precomputedCompetitors || generateCompetitors(tz, country);
+
+  // Scoring function based on TZ priorities and market
+  const calculateScore = (stats: DerivedStats, passed: boolean, withNotes: boolean = false) => {
+    if (!passed && !withNotes) return 0;
+    let score = 50;
+
+    // Weights from market
+    const weights: Record<string, number> =
+      tz.market === 'civilian'
+        ? {
+            accuracyMOA: 0.30,
+            ergonomics: 0.20,
+            standardization: 0.15,
+            unitCost: 0.20,
+            reliability: 0.15,
+          }
+        : {
+            reliability: 0.30,
+            unitCost: 0.20,
+            weaponMass: 0.20,
+            accuracyMOA: 0.15,
+            standardization: 0.15,
+          };
+
+    // Priority multipliers
+    tz.priority.forEach((p) => {
+      if (weights[p]) weights[p] *= 1.4;
+    });
+
+    // Score calculations
+    // Reliability
+    score += (stats.reliability / 100) * (weights.reliability || 0.2) * 100;
+    // Mass
+    const massMargin = Math.max(-0.2, (tz.maxMass - stats.weaponMass) / tz.maxMass);
+    score += massMargin * (weights.weaponMass || 0.2) * 100;
+    // Cost
+    const costMargin = Math.max(-0.2, (tz.maxUnitCost - stats.unitCost) / tz.maxUnitCost);
+    score += costMargin * (weights.unitCost || 0.2) * 100;
+    // Accuracy
+    const moaMargin = Math.max(-0.2, (tz.minAccuracyMOA - stats.accuracyMOA) / tz.minAccuracyMOA);
+    score += moaMargin * (weights.accuracyMOA || 0.2) * 100;
+    // Standardization
+    score += (stats.standardization / 100) * (weights.standardization || 0.1) * 60;
+    // Ergonomics
+    score += (stats.ergonomics / 100) * (weights.ergonomics || 0.1) * 60;
+
+    // Penalty if accepted with notes (soft tolerance)
+    if (withNotes && !passed) {
+      score *= 0.88;
+    }
+
+    return Math.round(score);
+  };
+
+  const isPlayerEligible = compliance.passed || compliance.isAcceptableWithNotes;
+  const playerScore = calculateScore(playerStats, compliance.passed, compliance.isAcceptableWithNotes);
+
+  competitors.forEach((c) => {
+    c.score = calculateScore(c.derived, c.passedThresholds);
+  });
+
+  const allEntries = [
+    { name: 'Ваше КБ', isPlayer: true, score: playerScore, passed: isPlayerEligible },
+    ...competitors.map((c) => ({ name: c.bureauName, isPlayer: false, score: c.score, passed: c.passedThresholds })),
+  ].sort((a, b) => b.score - a.score);
+
+  const playerRank = allEntries.findIndex((e) => e.isPlayer) + 1;
+
+  let verdict: 'accepted' | 'accepted_with_notes' | 'rejected' = 'rejected';
+  let verdictTitle = '';
+  let verdictText = '';
+  let payout = 0;
+  let reputationGain = 0;
+
+  if (!isPlayerEligible) {
+    verdict = 'rejected';
+    verdictTitle = 'Проект отклонён государственной комиссией';
+    verdictText = `Оружие не прошло критические испытания ТЗ. Зафиксированы грубые несоответствия: ${compliance.failedItems
+      .filter((i) => i.isCritical)
+      .map((i) => `${i.name} (${i.current} вместо ${i.required})`)
+      .join(', ')}. Конструкция снята с конкурса.`;
+    payout = 0;
+    reputationGain = -5;
+  } else if (playerRank === 1 && compliance.passed) {
+    verdict = 'accepted';
+    verdictTitle = 'Безоговорочная победа в конкурсе! Принят на вооружение';
+    verdictText = `Государственная комиссия признала проект вашего КБ лучшим среди всех участников конкурса. Отмечены превосходные параметры и полное соблюдение ТЗ. Заключён генеральный серийный контракт!`;
+    payout = tz.budgetReward;
+    reputationGain = tz.prestigeReward;
+  } else if (playerRank === 1 && compliance.isAcceptableWithNotes) {
+    verdict = 'accepted_with_notes';
+    verdictTitle = 'Победа с замечанием комиссии (Принят в серию)';
+    verdictText = `Комиссия признала превосходство конструкции над конкурентами, однако обязала устранить мелкие замечания (${compliance.failedItems.map((i) => i.name).join(', ')}) в ходе выпуска установочной заводской серии. Контракт утверждён!`;
+    payout = Math.round(tz.budgetReward * 0.9);
+    reputationGain = Math.round(tz.prestigeReward * 0.85);
+  } else if (playerRank === 2 && playerScore >= 70) {
+    verdict = 'accepted_with_notes';
+    verdictTitle = 'Принят в опытную войсковую партию';
+    verdictText = `Проект занял 2-е место, уступив лидеру по отдельным весовым критериям, однако комиссия сочла схему перспективной. Выделено финансирование на опытную партию и доводку узлов.`;
+    payout = Math.round(tz.budgetReward * 0.65);
+    reputationGain = Math.round(tz.prestigeReward * 0.5);
+  } else {
+    verdict = 'rejected';
+    verdictTitle = 'Победу одержало конкурирующее КБ';
+    verdictText = `Хотя ваше оружие преодолело обязательные нормативы, конкурент (${allEntries[0].name}) продемонстрировал более выгодные параметры по ключевым приоритетам ТЗ. Контракт достался сопернику.`;
+    payout = 25; // consolation subsidy
+    reputationGain = 2;
+  }
+
+  const criteriaBreakdown = [
+    {
+      criterion: 'Надёжность и безотказность',
+      requirement: `≥ ${tz.minReliability}% (${tz.climate})`,
+      playerValue: `${playerStats.reliability}%`,
+      status: (playerStats.reliability >= tz.minReliability ? 'pass' : 'fail') as 'pass' | 'fail',
+      note: playerStats.reliability >= tz.minReliability ? 'Выдержало полигонные испытания' : 'Задержки при стрельбе в климатической камере',
+    },
+    {
+      criterion: 'Масса оружия без патронов',
+      requirement: `≤ ${tz.maxMass} кг`,
+      playerValue: `${playerStats.weaponMass} кг`,
+      status: (playerStats.weaponMass <= tz.maxMass ? 'pass' : 'fail') as 'pass' | 'fail',
+      note: playerStats.weaponMass <= tz.maxMass ? 'Укладывается в переносимый носимый вес' : 'Слишком тяжёлое для пехотинца',
+    },
+    {
+      criterion: 'Себестоимость серии',
+      requirement: `≤ ${tz.maxUnitCost} у.е.`,
+      playerValue: `${playerStats.unitCost} у.е.`,
+      status: (playerStats.unitCost <= tz.maxUnitCost ? 'pass' : 'fail') as 'pass' | 'fail',
+      note: playerStats.unitCost <= tz.maxUnitCost ? 'Экономически целесообразно' : 'Превышает плановый бюджет министерства',
+    },
+    {
+      criterion: 'Кучность (MOA)',
+      requirement: `≤ ${tz.minAccuracyMOA} MOA`,
+      playerValue: `${playerStats.accuracyMOA} MOA`,
+      status: (playerStats.accuracyMOA <= tz.minAccuracyMOA ? 'pass' : 'fail') as 'pass' | 'fail',
+      note: playerStats.accuracyMOA <= tz.minAccuracyMOA ? 'Отличная баллистика' : 'Большой разброс попаданий',
+    },
+    {
+      criterion: 'Стандартизация и интерфейсы',
+      requirement: `≥ ${tz.minStandardization}%`,
+      playerValue: `${playerStats.standardization}%`,
+      status: (playerStats.standardization >= tz.minStandardization ? 'pass' : 'fail') as 'pass' | 'fail',
+      note: playerStats.standardization >= tz.minStandardization ? 'Совместимо с армейским снабжением' : 'Нестандартные узлы крепления',
+    },
+  ];
+
+  return {
+    passed: compliance.passed,
+    playerScore,
+    rank: playerRank,
+    totalCompetitors: allEntries.length,
+    verdict,
+    verdictTitle,
+    verdictText,
+    payout,
+    reputationGain,
+    competitors,
+    criteriaBreakdown,
+  };
+}
+
+export function generateDynamicTZ(year: number, country: CountryId): TechnicalSpecification {
+  const isPostWar = year >= 1945;
+  const isModern = year >= 1980;
+
+  type Archetype = {
+    type: TechnicalSpecification['weaponType'];
+    typeName: string;
+    class: TechnicalSpecification['requiredClass'];
+    titleTemplate: string;
+    client: TechnicalSpecification['client'];
+    clientName: string;
+    market: TechnicalSpecification['market'];
+    baseMass: number;
+    baseCost: number;
+    baseMoa: number;
+    baseRel: number;
+    baseRate: number;
+  };
+
+  const archetypes: Archetype[] = [];
+
+  if (year < 1950) {
+    archetypes.push({
+      type: 'submachineGun',
+      typeName: 'Пистолет-пулемёт',
+      class: 'pistol',
+      titleTemplate: `Фронтовой пистолет-пулемёт (${year})`,
+      client: 'army',
+      clientName: country === 'USSR' ? 'ГРАУ РККА' : 'Ordnance Department',
+      market: 'military',
+      baseMass: 3.4,
+      baseCost: 14.0,
+      baseMoa: 7.5,
+      baseRel: 76,
+      baseRate: 650,
+    });
+  }
+
+  if (year >= 1943) {
+    archetypes.push({
+      type: 'assaultRifle',
+      typeName: 'Штурмовой автомат',
+      class: 'intermediate',
+      titleTemplate: `Общевойсковой автомат пехоты (${year})`,
+      client: 'army',
+      clientName: country === 'USSR' ? 'Министерство обороны' : 'US Army Materiel Command',
+      market: 'military',
+      baseMass: 3.6,
+      baseCost: 22.0,
+      baseMoa: 4.8,
+      baseRel: 82,
+      baseRate: 600,
+    });
+  }
+
+  archetypes.push({
+    type: 'sniperRifle',
+    typeName: 'Снайперская винтовка',
+    class: 'rifle',
+    titleTemplate: `Высокоточная марксманская винтовка (${year})`,
+    client: 'special_forces',
+    clientName: country === 'USSR' ? 'Управление спецназа ГРУ' : 'Special Operations Command',
+    market: isModern ? 'both' : 'military',
+    baseMass: 4.5,
+    baseCost: 55.0,
+    baseMoa: 1.8,
+    baseRel: 84,
+    baseRate: 35,
+  });
+
+  if (country === 'USA' || year >= 1965) {
+    archetypes.push({
+      type: 'battleRifle',
+      typeName: 'Охотничий карабин',
+      class: 'rifle',
+      titleTemplate: `Коммерческий охотничий карабин (${year})`,
+      client: 'hunters',
+      clientName: 'Ассоциация стрелкового спорта',
+      market: 'civilian',
+      baseMass: 3.8,
+      baseCost: 45.0,
+      baseMoa: 1.6,
+      baseRel: 72,
+      baseRate: 15,
+    });
+  }
+
+  const selectedArch = archetypes[Math.floor(Math.random() * archetypes.length)];
+  const climates: ('normal' | 'dust' | 'frost' | 'mud')[] = ['normal', 'dust', 'frost', 'mud'];
+  const chosenClimate = climates[Math.floor(Math.random() * climates.length)];
+
+  const minStandardization = isModern ? 70 : isPostWar ? 40 : 25;
+  const targetBatch = selectedArch.market === 'civilian' ? 25000 : 40000;
+
+  return {
+    id: `dyn_tz_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+    title: selectedArch.titleTemplate,
+    year,
+    country,
+    client: selectedArch.client,
+    clientName: selectedArch.clientName,
+    weaponType: selectedArch.type,
+    weaponTypeName: selectedArch.typeName,
+    requiredClass: selectedArch.class,
+    minReliability: selectedArch.baseRel,
+    minRate: selectedArch.baseRate,
+    maxMass: selectedArch.baseMass,
+    maxUnitCost: selectedArch.baseCost,
+    minAccuracyMOA: selectedArch.baseMoa,
+    minStandardization,
+    deadlineWeeks: 24,
+    budgetReward: Math.round(350 + Math.random() * 300),
+    prestigeReward: Math.round(25 + Math.random() * 25),
+    climate: chosenClimate,
+    priority: selectedArch.market === 'civilian' ? ['accuracyMOA', 'unitCost', 'ergonomics'] : ['reliability', 'unitCost', 'weaponMass'],
+    market: selectedArch.market,
+    description: `Оперативное техническое задание от генералитета на проектирование системы класса "${selectedArch.typeName}". Полигонные испытания будут проходить в условиях "${chosenClimate}".`,
+    targetBatchSize: targetBatch,
+  };
+}
