@@ -52,7 +52,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             КБ
           </span>
           <span className="hidden md:inline font-sans font-extrabold text-slate-100">
-            Конструкторское бюро
+            Gunpowder <span className="text-cyan-400 font-mono text-xs font-semibold">v1.7.0</span>
           </span>
         </a>
       </div>

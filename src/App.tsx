@@ -40,6 +40,92 @@ import { sounds } from './utils/audio';
 const STORAGE_KEY = 'kb_game_save_v2';
 const DEBUG_KEY = 'kb_debug_mode_active';
 
+function sanitizeSavedSlots(raw: any): WeaponSlots {
+  const tokarev = BASE_CARTRIDGES.find((c) => c.id === '7.62x25') || BASE_CARTRIDGES[1];
+  const defaultSlots: WeaponSlots = {
+    cartridge: tokarev,
+    barrel: {
+      length: 250,
+      twist: 240,
+      profile: 'medium',
+      material: 'steel',
+      thread: 'none',
+      rifled: true,
+    },
+    action: { ...ACTIONS_PRESETS[1], gasAdjustable: false },
+    receiver: RECEIVERS_PRESETS[1],
+    magazine: {
+      type: 'box',
+      capacity: 35,
+      position: 'front',
+      material: 'steel',
+      techLevel: 1935,
+    },
+    trigger: {
+      mode: 'auto',
+      type: 'direct',
+      pullLength: 40,
+      safety: true,
+      cost: 2.0,
+    },
+    stock: {
+      type: 'fixedWood',
+      length: 300,
+      recoilDamper: false,
+      techLevel: 1935,
+    },
+    topInterface: TOP_INTERFACES_PRESETS[1],
+    handguard: HANDGUARD_PRESETS[0],
+    muzzleDevice: MUZZLE_PRESETS[0],
+    topAttachment: null,
+    lowerAttachment: null,
+  };
+
+  if (!raw || typeof raw !== 'object') return defaultSlots;
+
+  return {
+    cartridge: raw.cartridge && raw.cartridge.class ? { ...defaultSlots.cartridge, ...raw.cartridge } : defaultSlots.cartridge,
+    barrel: {
+      ...defaultSlots.barrel,
+      ...(raw.barrel || {}),
+    },
+    action: {
+      ...defaultSlots.action,
+      ...(raw.action || {}),
+    },
+    receiver: {
+      ...defaultSlots.receiver,
+      ...(raw.receiver || {}),
+    },
+    magazine: {
+      ...defaultSlots.magazine,
+      ...(raw.magazine || {}),
+    },
+    trigger: {
+      ...defaultSlots.trigger,
+      ...(raw.trigger || {}),
+    },
+    stock: {
+      ...defaultSlots.stock,
+      ...(raw.stock || {}),
+    },
+    topInterface: {
+      ...defaultSlots.topInterface,
+      ...(raw.topInterface || {}),
+    },
+    handguard: {
+      ...defaultSlots.handguard,
+      ...(raw.handguard || {}),
+    },
+    muzzleDevice: {
+      ...defaultSlots.muzzleDevice,
+      ...(raw.muzzleDevice || {}),
+    },
+    topAttachment: raw.topAttachment || null,
+    lowerAttachment: raw.lowerAttachment || null,
+  };
+}
+
 export default function App() {
   // Navigation mode: Main Menu vs Active Game Workshop
   const [isInMainMenu, setIsInMainMenu] = useState<boolean>(true);
@@ -241,7 +327,7 @@ export default function App() {
         if (p.customCartridges) setCustomCartridges(p.customCartridges);
         if (p.contracts) setContracts(p.contracts);
         if (p.layout) setLayout(p.layout);
-        if (p.slots) setSlots(p.slots);
+        if (p.slots) setSlots(sanitizeSavedSlots(p.slots));
 
         setIsInMainMenu(false);
         sounds.playBoltCycle();

@@ -220,6 +220,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
       <div className="relative w-full aspect-[21/9] min-h-[360px] max-h-[480px] bg-slate-950 flex items-center justify-center p-2">
         <svg
           viewBox="0 0 1000 420"
+          preserveAspectRatio="xMidYMid meet"
           className="w-full h-full select-none"
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -1044,9 +1045,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({
 
             {/* Row 1: Header */}
             <text x="8" y="16" fill="#38bdf8" fontSize="10" fontFamily="monospace" fontWeight="bold">
-              ЧЕРТЁЖ № КБ-ОБР-{derived.velocity}
+              GUNPOWDER v1.7.0 · КБ
             </text>
-            <text x="180" y="16" fill="#94a3b8" fontSize="9" fontFamily="monospace">
+            <text x="175" y="16" fill="#94a3b8" fontSize="9" fontFamily="monospace">
               МАСШТАБ 1:2
             </text>
 

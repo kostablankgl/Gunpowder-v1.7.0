@@ -75,11 +75,13 @@ export const MainMenu: React.FC<MainMenuProps> = ({
         </div>
 
         <div className="hidden sm:flex items-center gap-4 text-xs font-mono text-slate-400 border border-cyan-900/50 rounded-lg px-3 py-1.5 bg-slate-900/40">
+          <span className="text-cyan-400 font-bold">Gunpowder-v1.7.0</span>
+          <span>·</span>
           <span>Спецификация: 1920×1024</span>
           <span>·</span>
           <span>ГОСТ-2.102</span>
           <span>·</span>
-          <span className="text-cyan-400">СИСТЕМА ГОТОВА</span>
+          <span className="text-emerald-400">СИСТЕМА ГОТОВА</span>
         </div>
       </header>
 
@@ -90,12 +92,15 @@ export const MainMenu: React.FC<MainMenuProps> = ({
           <div className="w-full max-w-md flex flex-col items-center text-center space-y-8">
             {/* Title Section */}
             <div className="space-y-3">
-              <div className="inline-block px-3 py-1 rounded-full border border-cyan-500/40 bg-cyan-950/50 text-[11px] font-mono text-cyan-300 uppercase tracking-widest">
-                Инженерная стратегия
+              <div className="inline-block px-3.5 py-1 rounded-full border border-cyan-500/40 bg-cyan-950/50 text-[11px] font-mono text-cyan-300 uppercase tracking-widest">
+                GUNPOWDER v1.7.0 · ИНЖЕНЕРНОЕ БЮРО
               </div>
               <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white drop-shadow-md">
-                КОНСТРУКТОРСКОЕ БЮРО
+                GUNPOWDER
               </h1>
+              <div className="text-xs font-mono uppercase tracking-widest text-cyan-400 font-semibold">
+                Конструкторское бюро: Оружейный инженер
+              </div>
               <p className="text-slate-400 text-sm max-w-sm mx-auto leading-relaxed">
                 Проектирование стрелкового оружия, полигонные испытания, баллистические расчёты и серийное производство
               </p>

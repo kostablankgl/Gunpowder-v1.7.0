@@ -55,31 +55,54 @@ export function calculateReceiverCost(
   return Number(cost.toFixed(1));
 }
 
+export function calculateEmptyMagazineMass(magazine: WeaponSlots['magazine']): number {
+  if (!magazine) return 0.25;
+  const isPolymer = magazine.material === 'polymer';
+  if (magazine.type === 'drum') {
+    return isPolymer ? 0.42 : 0.65;
+  }
+  if (magazine.type === 'tube') {
+    return 0.12;
+  }
+  // Standard box magazine
+  const cap = magazine.capacity || 30;
+  if (cap <= 10) return isPolymer ? 0.08 : 0.14;
+  if (cap <= 20) return isPolymer ? 0.12 : 0.20;
+  if (cap <= 35) return isPolymer ? 0.16 : 0.26;
+  return isPolymer ? 0.22 : 0.34;
+}
+
+export function calculateAmmoMass(magazine: WeaponSlots['magazine'], cartridge: WeaponSlots['cartridge']): number {
+  if (!magazine || !cartridge) return 0;
+  const caseAndPowder = cartridge.class === 'pistol' ? 6.5 : cartridge.class === 'intermediate' ? 9.5 : 14.0;
+  const singleRoundKg = (cartridge.bulletMass + caseAndPowder) / 1000;
+  return Number((magazine.capacity * singleRoundKg).toFixed(2));
+}
+
 export function calculateMagazineMass(magazine: WeaponSlots['magazine'], cartridge: WeaponSlots['cartridge']): number {
-  const roundMass = (cartridge.bulletMass + 12) / 1000; // bullet + case + powder
-  const bodyBase = magazine.material === 'polymer' ? 0.12 : 0.22;
-  const ammoTotal = magazine.capacity * (roundMass + (magazine.material === 'polymer' ? 0.010 : 0.015));
-  return Number((bodyBase + ammoTotal).toFixed(2));
+  return Number((calculateEmptyMagazineMass(magazine) + calculateAmmoMass(magazine, cartridge)).toFixed(2));
 }
 
 export function calculateStockMass(stock: WeaponSlots['stock']): number {
+  if (!stock) return 0.45;
   const masses = {
-    fixedWood: 0.65,
-    folding: 0.38,
-    telescopic: 0.46,
-    polymer: 0.42,
+    fixedWood: 0.58,
+    folding: 0.28,
+    telescopic: 0.38,
+    polymer: 0.34,
   };
   const extra = stock.recoilDamper ? 0.08 : 0;
   return Number((masses[stock.type] + extra).toFixed(2));
 }
 
 export function calculateHandguardMass(handguard: WeaponSlots['handguard']): number {
+  if (!handguard) return 0.24;
   const masses = {
-    wood: 0.28,
-    aluminum: 0.34,
-    polymer: 0.22,
+    wood: 0.26,
+    aluminum: 0.30,
+    polymer: 0.18,
   };
-  return masses[handguard.material];
+  return masses[handguard.material] || 0.24;
 }
 
 export interface CartridgeClassLimits {
@@ -165,18 +188,20 @@ export function calculateDerivedStats(
   // Masses
   const barrelMass = calculateBarrelMass(barrel.length, barrel.profile, barrel.material, cartridge.bulletDiameter);
   const receiverMass = calculateReceiverMass(receiver);
-  const magMass = calculateMagazineMass(magazine, cartridge);
+  const emptyMagMass = calculateEmptyMagazineMass(magazine);
+  const ammoMass = calculateAmmoMass(magazine, cartridge);
   const stockMass = calculateStockMass(stock);
   const hgMass = calculateHandguardMass(handguard);
   const topOpticMass = topAttachment ? topAttachment.mass : 0;
   const lowerOpticMass = lowerAttachment ? lowerAttachment.mass : 0;
   const actionMass = action.boltMass + (action.requiresGasTube ? 0.25 : 0.05);
 
+  // Standard military & GOST dry weapon weight with empty magazine (tested against ТЗ)
   const weaponMass = Number(
     (
       barrelMass +
       receiverMass +
-      magMass +
+      emptyMagMass +
       stockMass +
       hgMass +
       topInterface.mass +
@@ -184,9 +209,12 @@ export function calculateDerivedStats(
       topOpticMass +
       lowerOpticMass +
       actionMass +
-      0.15 // trigger and pins
+      0.12 // trigger mechanism, pins and springs
     ).toFixed(2)
   );
+
+  // Loaded mass (снаряженная масса с полным боекомплектом в магазине)
+  const loadedMass = Number((weaponMass + ammoMass).toFixed(2));
 
   // 8.5 Recoil Formula with Class-Dependent Coeff (pistol: 0.05, intermediate: 0.09, rifle: 0.12)
   const recoilCoeff = limits.recoilCoeff;
@@ -362,15 +390,17 @@ export function calculateDerivedStats(
     overallLength,
     recoilCoeff,
     isBullpupPenaltyApplied,
+    loadedMass,
     massBreakdown: {
       barrel: barrelMass,
       receiver: receiverMass,
-      magazine: magMass,
+      magazine: emptyMagMass,
       stock: stockMass,
       action: actionMass,
       handguard: hgMass,
       attachments: Number((topInterface.mass + muzzleDevice.mass + topOpticMass + lowerOpticMass).toFixed(2)),
-      other: 0.15,
+      ammo: ammoMass,
+      other: 0.12,
     },
     costBreakdown: {
       nodesSum: Number(sumNodesCost.toFixed(1)),

@@ -187,6 +187,7 @@ export interface DerivedStats {
   overallLength: number; // mm
   recoilCoeff: number; // 0.05 | 0.09 | 0.12 based on class
   isBullpupPenaltyApplied?: boolean;
+  loadedMass?: number; // kg (dry weapon + loaded ammo)
   massBreakdown: {
     barrel: number;
     receiver: number;
@@ -195,6 +196,7 @@ export interface DerivedStats {
     action: number;
     handguard: number;
     attachments: number;
+    ammo?: number;
     other: number;
   };
   costBreakdown: {

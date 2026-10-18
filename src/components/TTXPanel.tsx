@@ -48,9 +48,9 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
       explanation: `Пуля массой ${slots.cartridge.bulletMass} г на скорости ${derived.velocity} м/с генерирует ${derived.energy} Дж дульной энергии. Действует строгое ограничение по классу патрона.`,
     },
     mass: {
-      title: 'Масса оружия без патронов',
-      formula: 'M = Ствол + Ресивер + Затвор + Магазин + Приклад + Цевьё + Обвес + Механизмы',
-      explanation: `Точная калькуляция массы по узлам:\n• Ствол (${slots.barrel.length} мм, ${slots.barrel.profile}): ${mb.barrel} кг\n• Ресивер (${slots.receiver.method}): ${mb.receiver} кг\n• Затвор и газовый узел: ${mb.action} кг\n• Магазин (${slots.magazine.type}, ${slots.magazine.capacity} патр.): ${mb.magazine} кг\n• Приклад: ${mb.stock} кг\n• Цевьё: ${mb.handguard} кг\n• Прицелы и планки: ${mb.attachments} кг\n• УСМ и крепеж: ${mb.other} кг\nИтого: ${derived.weaponMass} кг.`,
+      title: 'Масса оружия без патронов (по ТЗ)',
+      formula: 'M = Ствол + Ресивер + Затвор + Магазин (пустой) + Приклад + Цевьё + Обвес + Механизмы',
+      explanation: `Точная калькуляция массы по узлам:\n• Ствол (${slots.barrel.length} мм, ${slots.barrel.profile}): ${mb.barrel} кг\n• Ресивер (${slots.receiver.method}): ${mb.receiver} кг\n• Затвор и газовый узел: ${mb.action} кг\n• Пустой магазин (${slots.magazine.type}, ${slots.magazine.capacity} мест): ${mb.magazine} кг\n• Приклад: ${mb.stock} кг\n• Цевьё: ${mb.handguard} кг\n• Прицелы и планки: ${mb.attachments} кг\n• Механизмы УСМ: ${mb.other} кг\n\nИтого масса без патронов (по ТЗ): ${derived.weaponMass} кг\nБоеприпасы в магазине (${slots.magazine.capacity} шт.): +${mb.ammo ?? 0} кг\nПолная снаряжённая масса: ${derived.loadedMass ?? (derived.weaponMass + (mb.ammo || 0)).toFixed(2)} кг.`,
     },
     cost: {
       title: 'Себестоимость серии (у.е.)',
@@ -83,9 +83,9 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
   const statItems = [
     {
       key: 'mass',
-      label: 'Масса оружия',
+      label: 'Масса (без патронов)',
       val: `${derived.weaponMass} кг`,
-      formulaSnippet: `(Ствол ${mb.barrel} + Рес. ${mb.receiver} + Затвор ${mb.action} + Маг. ${mb.magazine} + Приклад ${mb.stock})`,
+      formulaSnippet: `(Ствол ${mb.barrel} + Рес. ${mb.receiver} + Затвор ${mb.action} + Маг. ${mb.magazine} + Приклад ${mb.stock} + Цевьё ${mb.handguard})`,
       req: tz ? `≤ ${tz.maxMass} кг` : null,
       passed: tz ? derived.weaponMass <= tz.maxMass : true,
       delta: tz ? derived.weaponMass - tz.maxMass : 0,
@@ -193,9 +193,31 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
   if (tz) {
     if (derived.weaponMass > tz.maxMass) {
       const diffGrams = Math.round((derived.weaponMass - tz.maxMass) * 1000);
-      engineerAdvice.push(
-        `⚖️ ПЕРЕВЕС (+${diffGrams} г): Рекомендую сменить профиль ствола на Light/Medium (-250 г) или поставить полимерный магазин, чтобы уложиться в норматив ${tz.maxMass} кг.`
-      );
+      const massTips: string[] = [];
+      if (slots.receiver.method === 'milled') {
+        massTips.push('замените фрезерованный ресивер на штампованный (-550 г)');
+      }
+      if (slots.stock.type === 'fixedWood') {
+        massTips.push('установите складной или полимерный приклад (-240..300 г)');
+      }
+      if (slots.barrel.profile === 'heavy') {
+        massTips.push('облегчите профиль ствола с Heavy на Light/Medium (-350..500 г)');
+      }
+      if (slots.barrel.length > 420) {
+        massTips.push('укоротите ствол на 40-80 мм (-120..220 г)');
+      }
+      if (slots.magazine.type === 'drum') {
+        massTips.push('замените дисковый барабан на секторный коробчатый магазин (-350 г)');
+      }
+      if (slots.topAttachment && slots.topAttachment.mass > 0.3) {
+        massTips.push('демонтируйте тяжёлый прицел');
+      }
+
+      const adviceText = massTips.length > 0
+        ? `⚖️ ПЕРЕВЕС (+${diffGrams} г): Чтобы уложиться в норматив ${tz.maxMass} кг, ${massTips.slice(0, 2).join(' или ')}.`
+        : `⚖️ ПЕРЕВЕС (+${diffGrams} г): Уменьшите длину ствола или установите облегченные узлы, чтобы уложиться в норматив ${tz.maxMass} кг.`;
+
+      engineerAdvice.push(adviceText);
     }
 
     if (derived.unitCost > tz.maxUnitCost) {
