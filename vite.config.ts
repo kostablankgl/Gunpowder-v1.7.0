@@ -5,7 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
-    base: './' на base: '/Gunpowder-v1.7.0/'
+    base: '/Gunpowder-v1.7.0/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
