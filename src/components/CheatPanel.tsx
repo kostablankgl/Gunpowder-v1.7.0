@@ -50,7 +50,7 @@ export const CheatPanel: React.FC<CheatPanelProps> = ({
           <div className="grid grid-cols-2 gap-3 p-3 rounded-lg bg-slate-950/70 border border-amber-500/20">
             <div>
               <span className="text-slate-400">Текущий бюджет:</span>{' '}
-              <span className="text-emerald-400 font-bold">{budget} у.е.</span>
+              <span className="text-emerald-400 font-bold">{budget} ©</span>
             </div>
             <div>
               <span className="text-slate-400">Репутация КБ:</span>{' '}

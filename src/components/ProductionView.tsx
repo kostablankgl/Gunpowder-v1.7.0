@@ -35,8 +35,8 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
               Серийное производство и государственные контракты
             </h2>
             <div className="text-xs text-slate-400 mt-0.5">
-              Текущий баланс КБ: <span className="font-mono text-emerald-400 font-bold">{budget} у.е.</span> ·
-              Чистый доход в месяц: <span className="font-mono text-cyan-300 font-bold">+{totalMonthlyRevenue} у.е.</span>
+              Текущий баланс КБ: <span className="font-mono text-emerald-400 font-bold">{budget} ©</span> ·
+              Чистый доход в месяц: <span className="font-mono text-cyan-300 font-bold">+{totalMonthlyRevenue} ©</span>
             </div>
           </div>
           <button
@@ -96,7 +96,7 @@ export const ProductionView: React.FC<ProductionViewProps> = ({
                         </div>
                         <div className="bg-slate-900/80 p-2 rounded border border-slate-800/60">
                           <span className="text-slate-500 block text-[10px]">Маржа за единицу</span>
-                          <span className="text-emerald-400 font-bold">+{unitProfit} у.е.</span>
+                          <span className="text-emerald-400 font-bold">+{unitProfit} ©</span>
                         </div>
                       </div>
                     </div>

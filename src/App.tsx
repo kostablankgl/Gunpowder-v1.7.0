@@ -349,7 +349,14 @@ export default function App() {
 
       // 1. Pick ideal starting cartridge matching requiredClass and country doctrine
       let chosenCartridge: Cartridge;
-      if (tz.requiredClass === 'pistol') {
+      if (tz.weaponType === 'pistol') {
+        chosenCartridge =
+          selectedCountry === 'USSR'
+            ? tz.year >= 1951
+              ? BASE_CARTRIDGES.find((c) => c.id === '9x18') || BASE_CARTRIDGES[1]
+              : BASE_CARTRIDGES.find((c) => c.id === '7.62x25') || BASE_CARTRIDGES[1]
+            : BASE_CARTRIDGES.find((c) => c.id === '45acp') || BASE_CARTRIDGES[0];
+      } else if (tz.requiredClass === 'pistol') {
         chosenCartridge =
           selectedCountry === 'USSR'
             ? BASE_CARTRIDGES.find((c) => c.id === '7.62x25') || BASE_CARTRIDGES[1]
@@ -374,7 +381,8 @@ export default function App() {
 
       // 2. Set barrel dimensions suited for the weapon class
       let barrelLen = 415;
-      if (tz.weaponType === 'submachineGun') barrelLen = 250;
+      if (tz.weaponType === 'pistol') barrelLen = selectedCountry === 'USSR' ? 116 : 127;
+      else if (tz.weaponType === 'submachineGun') barrelLen = 250;
       else if (tz.weaponType === 'sniperRifle') barrelLen = 620;
       else if (tz.weaponType === 'battleRifle') barrelLen = 520;
       else if (tz.title.toLowerCase().includes('компакт')) barrelLen = 310;
@@ -387,17 +395,27 @@ export default function App() {
 
       // 3. Reset Action
       const actionPreset =
-        tz.weaponType === 'submachineGun'
+        tz.weaponType === 'pistol'
+          ? ACTIONS_PRESETS[4] // short recoil
+          : tz.weaponType === 'submachineGun'
           ? ACTIONS_PRESETS[1] // blowback
           : tz.weaponType === 'sniperRifle' && tz.market === 'civilian'
           ? ACTIONS_PRESETS[0] // bolt action
           : ACTIONS_PRESETS[3]; // gas piston
 
-      // 4. Reset Magazine capacity
+      // 4. Reset Magazine capacity & placement
       let magCap = 30;
-      if (tz.weaponType === 'submachineGun') magCap = 35;
-      else if (tz.weaponType === 'sniperRifle') magCap = 10;
-      else if (tz.weaponType === 'battleRifle' && tz.market === 'civilian') magCap = 5;
+      let magPos: 'front' | 'rear' | 'grip' = 'front';
+      if (tz.weaponType === 'pistol') {
+        magCap = selectedCountry === 'USA' ? 7 : 8;
+        magPos = 'grip';
+      } else if (tz.weaponType === 'submachineGun') {
+        magCap = 35;
+      } else if (tz.weaponType === 'sniperRifle') {
+        magCap = 10;
+      } else if (tz.weaponType === 'battleRifle' && tz.market === 'civilian') {
+        magCap = 5;
+      }
 
       // 5. Build clean, pristine blueprint slots
       const cleanSlots: WeaponSlots = {
@@ -416,25 +434,25 @@ export default function App() {
         magazine: {
           type: 'box',
           capacity: magCap,
-          position: 'front',
+          position: magPos,
           material: 'steel',
           techLevel: 1935,
         },
         trigger: {
-          mode: tz.weaponType === 'sniperRifle' ? 'single' : 'both',
+          mode: tz.weaponType === 'pistol' || tz.weaponType === 'sniperRifle' ? 'single' : 'both',
           type: 'direct',
-          pullLength: 35,
+          pullLength: tz.weaponType === 'pistol' ? 22 : 35,
           safety: true,
-          cost: 2.0,
+          cost: tz.weaponType === 'pistol' ? 1.5 : 2.0,
         },
         stock: {
-          type: tz.weaponType === 'submachineGun' ? 'folding' : 'fixedWood',
-          length: 300,
+          type: tz.weaponType === 'pistol' ? 'none' : tz.weaponType === 'submachineGun' ? 'folding' : 'fixedWood',
+          length: tz.weaponType === 'pistol' ? 0 : 300,
           recoilDamper: false,
           techLevel: 1935,
         },
-        topInterface: TOP_INTERFACES_PRESETS[1], // dovetail
-        handguard: HANDGUARD_PRESETS[0], // wood
+        topInterface: tz.weaponType === 'pistol' ? TOP_INTERFACES_PRESETS[0] : TOP_INTERFACES_PRESETS[1],
+        handguard: tz.weaponType === 'pistol' ? HANDGUARD_PRESETS[4] : HANDGUARD_PRESETS[0],
         muzzleDevice: MUZZLE_PRESETS[0], // none
         topAttachment: null, // Clear all scopes
         lowerAttachment: null, // Clear all grips/bipods
@@ -650,6 +668,42 @@ export default function App() {
         topAttachment: ATTACHMENTS_CATALOG[0],
         lowerAttachment: ATTACHMENTS_CATALOG[5],
       }));
+    } else if (presetId === 'pistol_tt33') {
+      const tokarev = BASE_CARTRIDGES.find((c) => c.id === '7.62x25') || BASE_CARTRIDGES[1];
+      setLayout('classic');
+      setSlots((prev) => ({
+        ...prev,
+        cartridge: tokarev,
+        barrel: { length: 116, twist: 240, profile: 'light', material: 'steel', thread: 'none', rifled: true },
+        action: { ...ACTIONS_PRESETS[4], gasAdjustable: false }, // short recoil
+        receiver: RECEIVERS_PRESETS[0], // milled steel frame
+        magazine: { type: 'box', capacity: 8, position: 'grip', material: 'steel', techLevel: 1935 },
+        trigger: { mode: 'single', type: 'direct', pullLength: 20, safety: true, cost: 1.5 },
+        stock: { type: 'none', length: 0, recoilDamper: false, techLevel: 1935 },
+        topInterface: TOP_INTERFACES_PRESETS[0], // none
+        handguard: HANDGUARD_PRESETS[4], // none
+        muzzleDevice: MUZZLE_PRESETS[0], // none
+        topAttachment: null,
+        lowerAttachment: null,
+      }));
+    } else if (presetId === 'pistol_m1911') {
+      const acp45 = BASE_CARTRIDGES.find((c) => c.id === '45acp') || BASE_CARTRIDGES[0];
+      setLayout('classic');
+      setSlots((prev) => ({
+        ...prev,
+        cartridge: acp45,
+        barrel: { length: 127, twist: 400, profile: 'medium', material: 'steel', thread: 'none', rifled: true },
+        action: { ...ACTIONS_PRESETS[4], gasAdjustable: false }, // short recoil Browning
+        receiver: RECEIVERS_PRESETS[0], // forged/milled steel frame
+        magazine: { type: 'box', capacity: 7, position: 'grip', material: 'steel', techLevel: 1935 },
+        trigger: { mode: 'single', type: 'direct', pullLength: 18, safety: true, cost: 2.0 },
+        stock: { type: 'none', length: 0, recoilDamper: false, techLevel: 1935 },
+        topInterface: TOP_INTERFACES_PRESETS[0], // none
+        handguard: HANDGUARD_PRESETS[4], // none
+        muzzleDevice: MUZZLE_PRESETS[0], // none
+        topAttachment: null,
+        lowerAttachment: null,
+      }));
     }
   };
 
@@ -780,6 +834,14 @@ export default function App() {
   // =========================================================================
   return (
     <div className="w-full min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-slate-950">
+      {/* Landscape Orientation Advisory for Tablets & Mobile */}
+      <div className="hidden portrait:flex fixed bottom-3 left-3 right-3 z-50 rounded-xl border border-cyan-500/40 bg-slate-950/95 p-3 backdrop-blur-md shadow-2xl items-center justify-between text-xs font-mono text-cyan-300 animate-fadeIn">
+        <div className="flex items-center gap-2.5">
+          <span className="text-lg">🔄</span>
+          <span>Для чертёжного стола рекомендуется ландшафтный режим: поверните планшет горизонтально.</span>
+        </div>
+      </div>
+
       {/* 1. Universal Top Navigation Bar */}
       <HeaderNav
         activeView={
@@ -811,10 +873,6 @@ export default function App() {
           if (view === 'workshop') setActiveModal('none');
           else setActiveModal(view);
         }}
-        onSubmitToContest={() => {
-          sounds.playBoltCycle();
-          setIsContestOpen(true);
-        }}
       />
 
       {/* 2. Sub-Header Bureau Dashboard & Context Strip */}
@@ -844,7 +902,7 @@ export default function App() {
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-slate-400">Бюджет КБ:</span>
-            <span className="text-emerald-400 font-bold">{budget} у.е.</span>
+            <span className="text-emerald-400 font-bold">{budget} ©</span>
           </div>
           <div className="flex items-center gap-1.5">
             <span className="text-slate-400">Репутация:</span>

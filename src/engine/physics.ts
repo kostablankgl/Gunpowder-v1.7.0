@@ -33,14 +33,15 @@ export function calculateBarrelCost(
   return Number(((kMat[material] * (lengthMm / 100) * 1.2) * heavyExtra).toFixed(1));
 }
 
-export function calculateReceiverMass(receiver: WeaponSlots['receiver']): number {
+export function calculateReceiverMass(receiver: WeaponSlots['receiver'], isCompact: boolean = false): number {
   const methodMult = {
     milled: 1.3,
     stamped: 0.8,
     cast: 1.1,
     polymerMolded: 0.5,
   };
-  return Number((receiver.mass * methodMult[receiver.method]).toFixed(2));
+  const sizeFactor = isCompact ? 0.55 : 1.0;
+  return Number((receiver.mass * methodMult[receiver.method] * sizeFactor).toFixed(2));
 }
 
 export function calculateReceiverCost(
@@ -84,25 +85,27 @@ export function calculateMagazineMass(magazine: WeaponSlots['magazine'], cartrid
 }
 
 export function calculateStockMass(stock: WeaponSlots['stock']): number {
-  if (!stock) return 0.45;
+  if (!stock || stock.type === 'none') return 0;
   const masses = {
     fixedWood: 0.58,
     folding: 0.28,
     telescopic: 0.38,
     polymer: 0.34,
+    none: 0,
   };
   const extra = stock.recoilDamper ? 0.08 : 0;
   return Number((masses[stock.type] + extra).toFixed(2));
 }
 
 export function calculateHandguardMass(handguard: WeaponSlots['handguard']): number {
-  if (!handguard) return 0.24;
+  if (!handguard || handguard.material === 'none' || handguard.length === 0) return 0;
   const masses = {
     wood: 0.26,
     aluminum: 0.30,
     polymer: 0.18,
+    none: 0,
   };
-  return masses[handguard.material] || 0.24;
+  return masses[handguard.material] || 0.20;
 }
 
 export interface CartridgeClassLimits {
@@ -185,16 +188,21 @@ export function calculateDerivedStats(
   const twistDiff = Math.abs(barrel.twist - optimalTwist);
   const twistPenalty = (twistDiff / Math.max(50, optimalTwist)) * 14.0;
 
+  // Detect compact pistol configuration
+  const isPistol = (stock.type === 'none' || barrel.length <= 160) && cartridge.class === 'pistol';
+
   // Masses
   const barrelMass = calculateBarrelMass(barrel.length, barrel.profile, barrel.material, cartridge.bulletDiameter);
-  const receiverMass = calculateReceiverMass(receiver);
+  const receiverMass = calculateReceiverMass(receiver, isPistol);
   const emptyMagMass = calculateEmptyMagazineMass(magazine);
   const ammoMass = calculateAmmoMass(magazine, cartridge);
   const stockMass = calculateStockMass(stock);
   const hgMass = calculateHandguardMass(handguard);
   const topOpticMass = topAttachment ? topAttachment.mass : 0;
   const lowerOpticMass = lowerAttachment ? lowerAttachment.mass : 0;
-  const actionMass = action.boltMass + (action.requiresGasTube ? 0.25 : 0.05);
+  const actionMass = isPistol
+    ? Math.max(0.18, Number((action.boltMass * 0.52).toFixed(2)))
+    : action.boltMass + (action.requiresGasTube ? 0.25 : 0.05);
 
   // Standard military & GOST dry weapon weight with empty magazine (tested against ТЗ)
   const weaponMass = Number(
@@ -209,7 +217,7 @@ export function calculateDerivedStats(
       topOpticMass +
       lowerOpticMass +
       actionMass +
-      0.12 // trigger mechanism, pins and springs
+      (isPistol ? 0.08 : 0.12) // trigger mechanism, pins and springs
     ).toFixed(2)
   );
 
@@ -220,15 +228,16 @@ export function calculateDerivedStats(
   const recoilCoeff = limits.recoilCoeff;
   const muzzleReduction = muzzleDevice.recoilReduction / 100;
   const stockDamperMod = stock.recoilDamper ? 0.85 : 1.0;
+  const noStockPenalty = stock.type === 'none' ? 1.35 : 1.0; // Two-handed grip without shoulder stock kicks harder
   const recoilEnergy = Math.round(energy * (1 - muzzleReduction) * stockDamperMod * recoilCoeff);
-  const feltRecoil = Number((recoilEnergy / Math.max(1.5, weaponMass)).toFixed(1));
+  const feltRecoil = Number(((recoilEnergy * noStockPenalty) / Math.max(0.7, weaponMass)).toFixed(1));
 
   // 8.7 Unit Cost
   const barrelCost = calculateBarrelCost(barrel.length, barrel.profile, barrel.material);
-  const receiverCost = calculateReceiverCost(receiver, country);
+  const receiverCost = calculateReceiverCost(receiver, country) * (isPistol ? 0.65 : 1.0);
   const magCost = magazine.capacity > 30 ? 4.5 : 2.5;
-  const stockCost = stock.recoilDamper ? 6.0 : 3.5;
-  const hgCost = handguard.lowerInterface !== 'none' ? 6.5 : 2.5;
+  const stockCost = stock.type === 'none' ? 0 : stock.recoilDamper ? 6.0 : 3.5;
+  const hgCost = handguard.material === 'none' ? 0 : handguard.lowerInterface !== 'none' ? 6.5 : 2.5;
   const topAttCost = topAttachment ? topAttachment.cost : 0;
   const lowerAttCost = lowerAttachment ? lowerAttachment.cost : 0;
 
@@ -322,6 +331,11 @@ export function calculateDerivedStats(
     accuracy += lowerAttachment.accuracyBonus;
   }
 
+  // Shooting handheld without shoulder stock increases dispersion
+  if (stock.type === 'none') {
+    accuracy += 1.5;
+  }
+
   // Dovetail with rifle cartridge loses zero
   if (
     (topInterface.type === 'dovetail11' || topInterface.type === 'dovetail38') &&
@@ -337,7 +351,9 @@ export function calculateDerivedStats(
   let ergo = 68;
   if (stock.type === 'fixedWood' || stock.type === 'telescopic') ergo += 8;
   if (stock.type === 'folding') ergo += 4;
+  if (stock.type === 'none') ergo += 14; // Light, compact, rapid point-and-shoot
   if (weaponMass > 3.8) ergo -= (weaponMass - 3.8) * 8.0;
+  if (weaponMass < 1.2) ergo += 6; // Ultra-light handy weapon
   if (topInterface.height > 10) ergo -= (topInterface.height - 10) * 1.2;
   if (layout === 'bullpup') ergo -= 4; // rear balance
   if (triggerQuality > 75) ergo += 4;
@@ -365,11 +381,12 @@ export function calculateDerivedStats(
   const cyclicRate = action.type === 'manual' ? 25 : action.cyclicRate;
 
   // Overall Length
-  const stockLen = stock.length;
+  const stockLen = stock.type === 'none' ? 0 : stock.length;
   const barrelLen = barrel.length;
+  const receiverExtra = isPistol ? 55 : 150;
   const overallLength = layout === 'bullpup' 
     ? Math.round(barrelLen + 180 + (muzzleDevice.type !== 'none' ? 40 : 0))
-    : Math.round(barrelLen + stockLen + 150 + (muzzleDevice.type !== 'none' ? 50 : 0));
+    : Math.round(barrelLen + stockLen + receiverExtra + (muzzleDevice.type !== 'none' ? 50 : 0));
 
   return {
     velocity,
@@ -523,25 +540,35 @@ export function validateWeapon(
     });
   }
 
-  // 9.9 Stamping before 1940
-  if (receiver.method === 'stamped' && currentYear < 1940 && !unlockedTechs.includes('stamped_metal')) {
+  // 9.9 Stamping before 1935
+  if (receiver.method === 'stamped' && currentYear < 1935 && !unlockedTechs.includes('stamped_metal')) {
     issues.push({
       type: 'error',
       code: 'STAMPING_BEFORE_TECH',
       title: 'Технология холодной штамповки еще не освоена',
-      description: 'На заводах отсутствуют мощные вытяжные прессы нужного тоннажа. Изучите технологию в КБ или используйте фрезеровку.',
+      description: 'На заводах отсутствуют вытяжные прессы нужного тоннажа. Изучите технологию в КБ или используйте фрезеровку.',
       affectedSlot: 'receiver',
     });
   }
 
   // 9.10 Polymers before 1965
-  if ((receiver.material === 'polymer' || slots.magazine.material === 'polymer') && currentYear < 1965 && !unlockedTechs.includes('polymers_gen1')) {
+  if (receiver.material === 'polymer' && currentYear < 1965 && !unlockedTechs.includes('polymers_gen1')) {
     issues.push({
       type: 'error',
-      code: 'POLYMERS_BEFORE_TECH',
-      title: 'Оружейные полимеры не изобретены',
-      description: 'Стеклонаполненные термостойкие полиамиды появятся только во 2-й половине 1960-х годов.',
+      code: 'POLYMERS_RECEIVER_BEFORE_TECH',
+      title: 'Оружейные полимеры для ствольной коробки не изобретены',
+      description: 'Стеклонаполненные термостойкие полиамиды для ресивера появятся только во 2-й половине 1960-х годов.',
       affectedSlot: 'receiver',
+    });
+  }
+
+  if (slots.magazine.material === 'polymer' && currentYear < 1965 && !unlockedTechs.includes('polymers_gen1')) {
+    issues.push({
+      type: 'error',
+      code: 'POLYMERS_MAGAZINE_BEFORE_TECH',
+      title: 'Полимерные магазины не изобретены',
+      description: 'Пластиковые и бакелитовые магазины появятся только во 2-й половине 1960-х годов. Используйте проверенный стальной магазин.',
+      affectedSlot: 'magazine',
     });
   }
 
@@ -681,11 +708,11 @@ export function checkTZCompliance(
 
     failedItems.push({
       name: 'Себестоимость серии',
-      current: `${stats.unitCost} у.е.`,
-      required: `≤ ${tz.maxUnitCost} у.е.`,
+      current: `${stats.unitCost} ©`,
+      required: `≤ ${tz.maxUnitCost} ©`,
       note: isCritical
-        ? `Смета превышена на +${costDiff.toFixed(1)} у.е.`
-        : `Превышение сметы на +${costDiff.toFixed(1)} у.е. (компенсируется высокой серией).`,
+        ? `Смета превышена на +${costDiff.toFixed(1)} ©`
+        : `Превышение сметы на +${costDiff.toFixed(1)} © (компенсируется высокой серией).`,
       isCritical,
     });
     recommendations.push(
@@ -694,8 +721,8 @@ export function checkTZCompliance(
   } else {
     passedItems.push({
       name: 'Себестоимость',
-      current: `${stats.unitCost} у.е.`,
-      required: `≤ ${tz.maxUnitCost} у.е.`,
+      current: `${stats.unitCost} ©`,
+      required: `≤ ${tz.maxUnitCost} ©`,
     });
   }
 
@@ -1004,8 +1031,8 @@ export function evaluateContest(
     },
     {
       criterion: 'Себестоимость серии',
-      requirement: `≤ ${tz.maxUnitCost} у.е.`,
-      playerValue: `${playerStats.unitCost} у.е.`,
+      requirement: `≤ ${tz.maxUnitCost} ©`,
+      playerValue: `${playerStats.unitCost} ©`,
       status: (playerStats.unitCost <= tz.maxUnitCost ? 'pass' : 'fail') as 'pass' | 'fail',
       note: playerStats.unitCost <= tz.maxUnitCost ? 'Экономически целесообразно' : 'Превышает плановый бюджет министерства',
     },
@@ -1060,6 +1087,22 @@ export function generateDynamicTZ(year: number, country: CountryId): TechnicalSp
   };
 
   const archetypes: Archetype[] = [];
+
+  // Pistol archetype (always available across all eras)
+  archetypes.push({
+    type: 'pistol',
+    typeName: 'Пистолет',
+    class: 'pistol',
+    titleTemplate: `Самозарядный служебный пистолет (${year})`,
+    client: country === 'USSR' ? 'army' : 'police',
+    clientName: country === 'USSR' ? 'ГРАУ / Комендатура РККА' : 'Law Enforcement Division',
+    market: country === 'USA' ? 'both' : 'military',
+    baseMass: 0.90,
+    baseCost: 11.5,
+    baseMoa: 4.5,
+    baseRel: 84,
+    baseRate: 40,
+  });
 
   if (year < 1950) {
     archetypes.push({

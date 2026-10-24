@@ -2,11 +2,11 @@ import React from 'react';
 
 interface HeaderNavProps {
   activeView: 'workshop' | 'tenders' | 'research' | 'production' | 'customCaliber';
-  hasActiveErrors: boolean;
+  hasActiveErrors?: boolean;
   isMuted?: boolean;
   debugMode?: boolean;
   onNavigate: (view: 'workshop' | 'tenders' | 'research' | 'production' | 'customCaliber') => void;
-  onSubmitToContest: () => void;
+  onSubmitToContest?: () => void;
   onToggleMute?: () => void;
   onOpenSettings?: () => void;
   onOpenMainMenu?: () => void;
@@ -15,11 +15,10 @@ interface HeaderNavProps {
 
 export const HeaderNav: React.FC<HeaderNavProps> = ({
   activeView,
-  hasActiveErrors,
+  hasActiveErrors = false,
   isMuted = false,
   debugMode = false,
   onNavigate,
-  onSubmitToContest,
   onToggleMute,
   onOpenSettings,
   onOpenMainMenu,
@@ -57,62 +56,44 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
         </a>
       </div>
 
-      {/* Zone 2: Navigation Links */}
-      <nav className="flex items-center gap-3 lg:gap-6 text-xs font-medium text-slate-400 overflow-x-auto py-1">
-        <button
-          onClick={() => onNavigate('workshop')}
-          className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-100 ${
-            activeView === 'workshop' ? 'text-cyan-400 font-bold border-b-2 border-cyan-400 pb-0.5' : ''
-          }`}
-        >
-          Проектирование
-        </button>
-        <button
-          onClick={() => onNavigate('tenders')}
-          className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-100 ${
-            activeView === 'tenders' ? 'text-cyan-400 font-bold border-b-2 border-cyan-400 pb-0.5' : ''
-          }`}
-        >
-          Госзаказы (ТЗ)
-        </button>
-        <button
-          onClick={() => onNavigate('research')}
-          className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-100 ${
-            activeView === 'research' ? 'text-cyan-400 font-bold border-b-2 border-cyan-400 pb-0.5' : ''
-          }`}
-        >
-          Технологии (НИОКР)
-        </button>
-        <button
-          onClick={() => onNavigate('production')}
-          className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-100 ${
-            activeView === 'production' ? 'text-cyan-400 font-bold border-b-2 border-cyan-400 pb-0.5' : ''
-          }`}
-        >
-          Серия и Завод
-        </button>
-        <button
-          onClick={() => onNavigate('customCaliber')}
-          className={`transition-colors whitespace-nowrap shrink-0 hover:text-slate-100 ${
-            activeView === 'customCaliber' ? 'text-cyan-400 font-bold border-b-2 border-cyan-400 pb-0.5' : ''
-          }`}
-        >
-          Свой калибр
-        </button>
+      {/* Zone 2: Tablet-Optimized Spacious Touch Tabs */}
+      <nav className="flex items-center gap-1.5 lg:gap-2 overflow-x-auto subtle-scroll py-1">
+        {[
+          { id: 'workshop', label: 'Чертёж', icon: '📐' },
+          { id: 'tenders', label: 'Госзаказы', icon: '📋' },
+          { id: 'research', label: 'НИОКР', icon: '🔬' },
+          { id: 'production', label: 'Завод', icon: '🏭' },
+          { id: 'customCaliber', label: 'Патроны', icon: '💥' },
+        ].map((tab) => {
+          const isActive = activeView === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => onNavigate(tab.id as any)}
+              className={`min-h-[40px] px-3 lg:px-4 py-2 rounded-xl text-xs lg:text-sm font-semibold transition-all whitespace-nowrap flex items-center gap-1.5 ${
+                isActive
+                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 shadow-sm shadow-cyan-950/60'
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/80 border border-transparent'
+              }`}
+            >
+              <span className="text-sm">{tab.icon}</span>
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
       </nav>
 
-      {/* Zone 3: Actions, Settings, Debug, Audio */}
-      <div className="flex items-center gap-2 lg:gap-3 shrink-0">
-        {/* Cheat / Debug Panel Trigger Button (Active when code 3689 entered) */}
+      {/* Zone 3: Actions, Settings, Stealth Debug, Audio */}
+      <div className="flex items-center gap-2 lg:gap-2.5 shrink-0">
+        {/* Stealth Cheat Button (clean lightning icon, no text, no code) */}
         {debugMode && onOpenCheatPanel && (
           <button
             type="button"
             onClick={onOpenCheatPanel}
-            title="Открыть меню читов и отладки (код 3689)"
-            className="px-2.5 py-1.5 rounded-lg border border-amber-500/80 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 text-xs font-mono font-bold animate-pulse flex items-center gap-1.5"
+            title="Инженерный терминал"
+            className="w-9 h-9 rounded-xl border border-amber-500/40 bg-amber-500/15 text-amber-300 hover:bg-amber-500/25 flex items-center justify-center text-sm transition-colors shadow-sm"
           >
-            <span>⚡</span>
-            <span className="hidden sm:inline">ЧИТЫ (3689)</span>
+            ⚡
           </button>
         )}
 
@@ -122,7 +103,7 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             type="button"
             onClick={onToggleMute}
             title={isMuted ? 'Включить звук' : 'Выключить звук'}
-            className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-100 transition-colors text-xs"
+            className="w-9 h-9 rounded-xl border border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-100 flex items-center justify-center transition-colors text-xs"
           >
             {isMuted ? '🔇' : '🔊'}
           </button>
@@ -134,23 +115,12 @@ export const HeaderNav: React.FC<HeaderNavProps> = ({
             type="button"
             onClick={onOpenSettings}
             title="Настройки звука и консоль"
-            className="p-1.5 rounded-lg border border-slate-800 bg-slate-900 text-slate-400 hover:text-slate-100 transition-colors text-xs"
+            className="w-9 h-9 rounded-xl border border-slate-800 bg-slate-900/80 text-slate-400 hover:text-slate-100 flex items-center justify-center transition-colors text-xs"
           >
             ⚙️
           </button>
         )}
 
-        {/* Primary Action Button */}
-        <button
-          onClick={onSubmitToContest}
-          className={`px-3 lg:px-4 py-1.5 lg:py-2 text-xs font-semibold rounded-lg transition-all whitespace-nowrap shrink-0 shadow-md ${
-            hasActiveErrors
-              ? 'bg-rose-950/80 text-rose-300 border border-rose-800 hover:bg-rose-900'
-              : 'bg-cyan-600 text-white hover:bg-cyan-500 hover:shadow-cyan-500/20'
-          }`}
-        >
-          {hasActiveErrors ? 'Исправить дефекты' : 'Подать на конкурс'}
-        </button>
       </div>
     </header>
   );

@@ -56,9 +56,8 @@ export interface Receiver {
   cost: number;
   techLevel: number;
 }
-
 export type MagazineType = 'box' | 'drum' | 'tube';
-export type MagazinePosition = 'front' | 'rear'; // rear = bullpup
+export type MagazinePosition = 'front' | 'rear' | 'grip'; // rear = bullpup, grip = pistol
 export type MagazineMaterial = 'steel' | 'polymer';
 
 export interface Magazine {
@@ -80,11 +79,11 @@ export interface Trigger {
   cost: number;
 }
 
-export type StockType = 'fixedWood' | 'folding' | 'telescopic' | 'polymer';
+export type StockType = 'fixedWood' | 'folding' | 'telescopic' | 'polymer' | 'none';
 
 export interface Stock {
   type: StockType;
-  length: number; // mm (150 - 400)
+  length: number; // mm (0 for none, 150 - 400)
   recoilDamper: boolean;
   techLevel: number;
 }
@@ -102,7 +101,7 @@ export interface TopInterface {
 }
 
 export type LowerInterfaceType = 'none' | 'mlok' | 'picatinny';
-export type HandguardMaterial = 'wood' | 'aluminum' | 'polymer';
+export type HandguardMaterial = 'wood' | 'aluminum' | 'polymer' | 'none';
 
 export interface Handguard {
   length: number; // mm

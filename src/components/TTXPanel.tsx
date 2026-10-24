@@ -53,9 +53,9 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
       explanation: `Точная калькуляция массы по узлам:\n• Ствол (${slots.barrel.length} мм, ${slots.barrel.profile}): ${mb.barrel} кг\n• Ресивер (${slots.receiver.method}): ${mb.receiver} кг\n• Затвор и газовый узел: ${mb.action} кг\n• Пустой магазин (${slots.magazine.type}, ${slots.magazine.capacity} мест): ${mb.magazine} кг\n• Приклад: ${mb.stock} кг\n• Цевьё: ${mb.handguard} кг\n• Прицелы и планки: ${mb.attachments} кг\n• Механизмы УСМ: ${mb.other} кг\n\nИтого масса без патронов (по ТЗ): ${derived.weaponMass} кг\nБоеприпасы в магазине (${slots.magazine.capacity} шт.): +${mb.ammo ?? 0} кг\nПолная снаряжённая масса: ${derived.loadedMass ?? (derived.weaponMass + (mb.ammo || 0)).toFixed(2)} кг.`,
     },
     cost: {
-      title: 'Себестоимость серии (у.е.)',
+      title: 'Себестоимость серии (©)',
       formula: 'unitCost = Сумма узлов + Наценка метода обработки',
-      explanation: `Сумма деталей: ${cb.nodesSum} у.е. Наценка за метод обработки (${slots.receiver.method}): +${cb.productionMarkup} у.е. При крупной серии штамповка обходится дешевле всего, фрезеровка увеличивает станкоёмкость.`,
+      explanation: `Сумма деталей: ${cb.nodesSum} ©. Наценка за метод обработки (${slots.receiver.method}): +${cb.productionMarkup} ©. При крупной серии штамповка обходится дешевле всего, фрезеровка увеличивает станкоёмкость.`,
     },
     reliability: {
       title: 'Коэффициент надёжности (%)',
@@ -93,9 +93,9 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
     {
       key: 'cost',
       label: 'Себестоимость серии',
-      val: `${derived.unitCost} у.е.`,
-      formulaSnippet: `(Узлы: ${cb.nodesSum} + Наценка [${slots.receiver.method}]: ${cb.productionMarkup} у.е.)`,
-      req: tz ? `≤ ${tz.maxUnitCost} у.е.` : null,
+      val: `${derived.unitCost} ©`,
+      formulaSnippet: `(Узлы: ${cb.nodesSum} + Наценка [${slots.receiver.method}]: ${cb.productionMarkup} ©)`,
+      req: tz ? `≤ ${tz.maxUnitCost} ©` : null,
       passed: tz ? derived.unitCost <= tz.maxUnitCost : true,
       delta: tz ? derived.unitCost - tz.maxUnitCost : 0,
     },
@@ -223,7 +223,7 @@ export const TTXPanel: React.FC<TTXPanelProps> = ({
     if (derived.unitCost > tz.maxUnitCost) {
       const diffCost = (derived.unitCost - tz.maxUnitCost).toFixed(1);
       engineerAdvice.push(
-        `💰 ПРЕВЫШЕНИЕ СМЕТЫ (+${diffCost} у.е.): Рекомендую сменить метод производства ресивера на штамповку (экономия до ~6-8 у.е.) или убрать дорогостоящий обвес.`
+        `💰 ПРЕВЫШЕНИЕ СМЕТЫ (+${diffCost} ©): Рекомендую сменить метод производства ресивера на штамповку (экономия до ~6-8 ©) или убрать дорогостоящий обвес.`
       );
     }
 

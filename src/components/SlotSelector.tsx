@@ -80,6 +80,8 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
   };
 
   const presetList = [
+    { id: 'pistol_tt33', label: 'Пистолет ТТ' },
+    { id: 'pistol_m1911', label: 'Пистолет M1911' },
     { id: 'smg_1943', label: 'ПП 7.62×25' },
     { id: 'ak_1947', label: 'Автомат 7.62×39' },
     { id: 'ak_1974', label: 'Автомат 5.45×39' },
@@ -218,7 +220,7 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                     type="button"
                     onClick={() =>
                       onUpdateSlots({
-                        barrel: { ...slots.barrel, length: Math.max(120, slots.barrel.length - 20) },
+                        barrel: { ...slots.barrel, length: Math.max(80, slots.barrel.length - 10) },
                       })
                     }
                     className="h-8 w-8 rounded bg-slate-800 text-slate-200 font-bold hover:bg-slate-700 active:bg-slate-600 flex items-center justify-center shrink-0 text-sm border border-slate-700/60"
@@ -227,9 +229,9 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                   </button>
                   <input
                     type="range"
-                    min="120"
+                    min="80"
                     max="760"
-                    step="10"
+                    step="5"
                     value={slots.barrel.length}
                     onChange={(e) =>
                       onUpdateSlots({
@@ -242,7 +244,7 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                     type="button"
                     onClick={() =>
                       onUpdateSlots({
-                        barrel: { ...slots.barrel, length: Math.min(760, slots.barrel.length + 20) },
+                        barrel: { ...slots.barrel, length: Math.min(760, slots.barrel.length + 10) },
                       })
                     }
                     className="h-8 w-8 rounded bg-slate-800 text-slate-200 font-bold hover:bg-slate-700 active:bg-slate-600 flex items-center justify-center shrink-0 text-sm border border-slate-700/60"
@@ -461,6 +463,14 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
               Конструкция и метод изготовления ствольной коробки
             </h4>
+            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-lg bg-slate-950/70 border border-slate-800 text-xs font-mono">
+              <span className="text-slate-300">
+                Калибр: <strong className="text-cyan-300">{slots.cartridge.name}</strong>
+              </span>
+              <span className="text-slate-300">
+                Пиковое давление выстрела: <strong className="text-amber-400">{slots.cartridge.maxPressure} бар</strong>
+              </span>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
               {RECEIVERS_PRESETS.map((rec) => {
                 const available = isTechAvailable(
@@ -474,6 +484,7 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                 const isSelected =
                   slots.receiver.method === rec.method &&
                   slots.receiver.material === rec.material;
+                const isUnderPressure = rec.strength < slots.cartridge.maxPressure;
                 return (
                   <button
                     key={`${rec.material}-${rec.method}`}
@@ -481,9 +492,13 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                     onClick={() => onUpdateSlots({ receiver: rec })}
                     className={`p-3 rounded-lg border text-left transition-all ${
                       isSelected
-                        ? 'border-cyan-500 bg-cyan-950/30'
+                        ? isUnderPressure
+                          ? 'border-rose-500 bg-rose-950/30'
+                          : 'border-cyan-500 bg-cyan-950/30'
                         : available
-                        ? 'border-slate-800 bg-slate-950/40 hover:bg-slate-800/40'
+                        ? isUnderPressure
+                          ? 'border-rose-800/60 bg-slate-950/40 hover:bg-rose-950/20'
+                          : 'border-slate-800 bg-slate-950/40 hover:bg-slate-800/40'
                         : 'border-slate-800/40 bg-slate-950/20 opacity-40 cursor-not-allowed'
                     }`}
                   >
@@ -499,8 +514,17 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                     <div className="mt-1 text-[11px] font-mono text-slate-400">
                       Прочность: {rec.strength} бар · Масса: {rec.mass} кг
                     </div>
+                    {isUnderPressure ? (
+                      <span className="mt-1.5 text-[11px] text-rose-400 font-semibold block">
+                        ⚠️ Не выдержит давление ({slots.cartridge.maxPressure} бар)
+                      </span>
+                    ) : (
+                      <span className="mt-1.5 text-[10px] text-emerald-400 font-mono block">
+                        ✓ Запас: +{rec.strength - slots.cartridge.maxPressure} бар
+                      </span>
+                    )}
                     {!available && (
-                      <span className="mt-2 text-[10px] text-rose-400 block">
+                      <span className="mt-1.5 text-[10px] text-amber-400 block">
                         Требует технологию {rec.techLevel} г.
                       </span>
                     )}
@@ -706,9 +730,10 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
             <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-300">
               Тип приклада и рукоятки
             </h4>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2.5">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-2.5">
               {(
                 [
+                  ['none', 'Без приклада (Пистолет)', 'Только рукоять frame: 0 кг, максимальная эргономика'],
                   ['fixedWood', 'Постоянный деревянный', 'Классическая эргономика, надежность'],
                   ['folding', 'Складной металлический', 'Компактность в транспорте, малый вес'],
                   ['telescopic', 'Телескопический тактический', 'Регулировка под бронежилет'],
@@ -856,10 +881,20 @@ export const SlotSelector: React.FC<SlotSelectorProps> = ({
                     }`}
                   >
                     <div className="font-bold text-sm text-slate-100">
-                      Цевьё: {hg.material} ({hg.lowerInterface !== 'none' ? hg.lowerInterface : 'без планки'})
+                      {hg.material === 'none'
+                        ? 'Без цевья (Пистолет / Компакт)'
+                        : `Цевьё: ${
+                            hg.material === 'wood'
+                              ? 'Дерево'
+                              : hg.material === 'polymer'
+                              ? 'Полимер'
+                              : 'Алюминий'
+                          } (${hg.lowerInterface !== 'none' ? hg.lowerInterface : 'без планки'})`}
                     </div>
                     <div className="mt-1 text-[11px] font-mono text-slate-400">
-                      Длина: {hg.length} мм {hg.vented ? '· Вентилируемое' : ''}
+                      {hg.material === 'none'
+                        ? 'Длина: 0 мм · Открытый затвор / ствол'
+                        : `Длина: ${hg.length} мм ${hg.vented ? '· Вентилируемое' : ''}`}
                     </div>
                   </button>
                 );

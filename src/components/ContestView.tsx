@@ -202,7 +202,7 @@ export const ContestView: React.FC<ContestViewProps> = ({
                   </p>
                   <div className="mt-3 flex flex-wrap gap-4 text-xs font-mono">
                     <span className="text-emerald-400 font-bold">
-                      Премия за конкурс: +{result.payout} у.е.
+                      Премия за конкурс: +{result.payout} ©
                     </span>
                     <span className="text-cyan-400 font-bold">
                       Репутация КБ: {result.reputationGain >= 0 ? `+${result.reputationGain}` : result.reputationGain}
@@ -290,7 +290,7 @@ export const ContestView: React.FC<ContestViewProps> = ({
                       </td>
                       <td className="py-2.5">{derived.reliability}%</td>
                       <td className="py-2.5">{derived.weaponMass} кг</td>
-                      <td className="py-2.5">{derived.unitCost} у.е.</td>
+                      <td className="py-2.5">{derived.unitCost} ©</td>
                       <td className="py-2.5">{derived.accuracyMOA} MOA</td>
                       <td className="py-2.5 text-cyan-300 font-bold">{result.playerScore}</td>
                       <td className="py-2.5">
@@ -311,7 +311,7 @@ export const ContestView: React.FC<ContestViewProps> = ({
                         </td>
                         <td className="py-2.5">{comp.derived.reliability}%</td>
                         <td className="py-2.5">{comp.derived.weaponMass} кг</td>
-                        <td className="py-2.5">{comp.derived.unitCost} у.е.</td>
+                        <td className="py-2.5">{comp.derived.unitCost} ©</td>
                         <td className="py-2.5">{comp.derived.accuracyMOA} MOA</td>
                         <td className="py-2.5 font-bold">{comp.score}</td>
                         <td className="py-2.5">

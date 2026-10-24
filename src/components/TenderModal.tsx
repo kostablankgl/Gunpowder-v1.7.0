@@ -100,7 +100,7 @@ export const TenderModal: React.FC<TenderModalProps> = ({
                       </div>
                       <div className="bg-slate-900/80 p-2 rounded border border-slate-800/80">
                         <span className="text-slate-500 block text-[10px]">Лимит сметы</span>
-                        <span className="text-slate-200 font-semibold">≤ {tz.maxUnitCost} у.е.</span>
+                        <span className="text-slate-200 font-semibold">≤ {tz.maxUnitCost} ©</span>
                       </div>
                       <div className="bg-slate-900/80 p-2 rounded border border-slate-800/80">
                         <span className="text-slate-500 block text-[10px]">Кучность</span>
@@ -115,7 +115,7 @@ export const TenderModal: React.FC<TenderModalProps> = ({
 
                   <div className="mt-5 pt-3 border-t border-slate-800/80 flex items-center justify-between">
                     <div className="text-xs font-mono text-slate-400">
-                      Награда: <span className="text-emerald-400 font-bold">+{tz.budgetReward} у.е.</span> ·{' '}
+                      Награда: <span className="text-emerald-400 font-bold">+{tz.budgetReward} ©</span> ·{' '}
                       Престиж: <span className="text-cyan-400 font-bold">+{tz.prestigeReward}</span>
                     </div>
                     <button
